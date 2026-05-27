@@ -14,7 +14,7 @@ export const getLast7Days = () => {
     });
   }
 
-  return result.reverse(); // returns an array of all the previous 7 days
+  return result; // returns an array of all the previous 7 days
 };
 
 export const getLast12Months = () => {

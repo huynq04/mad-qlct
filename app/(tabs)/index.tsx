@@ -10,29 +10,61 @@ import { useTheme } from "@/contexts/themeContext";
 import useFetchData from "@/hooks/useFetchData";
 import { TransactionType } from "@/types";
 import { verticalScale } from "@/utils/styling";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { limit, orderBy, where } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
-import React from "react";
-import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import {
+  InteractionManager,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const Home = () => {
   const { user } = useAuth();
   const router = useRouter();
   const { colors, isDarkMode } = useTheme();
+  const scrollRef = useRef<ScrollView | null>(null);
+  const [scrollToTopSignal, setScrollToTopSignal] = useState(0);
 
+  // Lấy các giao dịch gần đây của người dùng hiện tại từ Firestore.
   const constraints = [
     where("uid", "==", user?.uid),
     orderBy("date", "desc"),
     limit(30),
   ];
 
-  const {
-    data: recentTransactions,
-    loading: transactionsLoading,
-  } = useFetchData<TransactionType>(
-    user?.uid ? "transactions" : "",
-    constraints
+  const { data: recentTransactions, loading: transactionsLoading } =
+    useFetchData<TransactionType>(user?.uid ? "transactions" : "", constraints);
+
+  // Sắp xếp lại danh sách theo số tiền để các giao dịch lớn nổi bật hơn.
+  const sortedTransactions = useMemo(() => {
+    return [...(recentTransactions || [])].sort(
+      (a, b) => (b?.amount || 0) - (a?.amount || 0),
+    );
+  }, [recentTransactions]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // Mỗi lần quay lại tab Home, đưa danh sách lên đầu để người dùng thấy dữ liệu mới nhất.
+      const scrollToTop = () => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+        setScrollToTopSignal((prev) => prev + 1);
+      };
+
+      const frameId = requestAnimationFrame(scrollToTop);
+      const interactionsTask =
+        InteractionManager.runAfterInteractions(scrollToTop);
+      const timerId = setTimeout(scrollToTop, 150);
+
+      return () => {
+        cancelAnimationFrame(frameId);
+        interactionsTask.cancel();
+        clearTimeout(timerId);
+      };
+    }, []),
   );
 
   return (
@@ -50,10 +82,16 @@ const Home = () => {
             </Typo>
           </View>
 
-
           <View style={styles.headerActions}>
             <TouchableOpacity
-              style={[styles.searchIcon, { backgroundColor: isDarkMode ? colors.neutral700 : colors.neutral200 }]}
+              style={[
+                styles.searchIcon,
+                {
+                  backgroundColor: isDarkMode
+                    ? colors.neutral200
+                    : colors.neutral200,
+                },
+              ]}
               onPress={() => router.push("/(modals)/searchModal")}
             >
               <Icons.MagnifyingGlass
@@ -63,12 +101,12 @@ const Home = () => {
               />
             </TouchableOpacity>
 
-
             <NotificationBell />
           </View>
         </View>
 
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.scrollViewStyle}
           showsVerticalScrollIndicator={false}
         >
@@ -78,10 +116,11 @@ const Home = () => {
           </View>
 
           <TransactionList
-            data={recentTransactions}
+            data={sortedTransactions}
             loading={transactionsLoading}
             emptyListMessage="Chưa có giao dịch nào được thêm vào!"
             title="Giao dịch gần đây"
+            scrollToTopSignal={scrollToTopSignal}
           />
         </ScrollView>
 
@@ -89,12 +128,7 @@ const Home = () => {
           style={styles.floatingButton}
           onPress={() => router.push("/(modals)/transactionModal")}
         >
-
-          <Icons.Plus
-            color={"#000"}
-            weight="bold"
-            size={verticalScale(24)}
-          />
+          <Icons.Plus color={"#000"} weight="bold" size={verticalScale(24)} />
         </Button>
       </View>
     </ScreenWrapper>

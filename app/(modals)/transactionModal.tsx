@@ -53,6 +53,7 @@ const TransactionModal = () => {
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  // Lấy danh sách ví để người dùng chọn ví áp dụng cho giao dịch.
   const { data: wallets } = useFetchData<WalletType>("wallets", [
     where("uid", "==", user?.uid),
     orderBy("created", "desc"),
@@ -73,6 +74,7 @@ const TransactionModal = () => {
 
   const oldTransaction: paramType = useLocalSearchParams();
 
+  // Map danh mục AI trả về bằng tiếng Việt sang key category đang dùng trong hệ thống.
   const mapAICategory = (aiCategory: string): string => {
     const map: Record<string, string> = {
       "Ăn uống": "dining",
@@ -110,6 +112,7 @@ const TransactionModal = () => {
     month: 3,
   };
 
+  // Format nội dung cảnh báo hạn mức chi tiêu theo ngày/tuần/tháng.
   const formatBudgetWarningDetails = (
     items: ExpenseLimitExceededItem[],
     statusType: "near-limit" | "exceeded-limit",
@@ -131,6 +134,7 @@ const TransactionModal = () => {
       .join("\n");
   };
 
+  // Chuyển ngày từ kết quả scan hóa đơn AI sang Date để điền vào form.
   const parseScannedDate = (dateStr: string): Date => {
     if (!dateStr) return new Date();
     try {
@@ -142,6 +146,7 @@ const TransactionModal = () => {
     }
   };
 
+  // Không cho chọn ngày tương lai khi tạo/cập nhật giao dịch.
   const onDateChange = (event: any, selectedDate: any) => {
     const currentDate = clampToToday(selectedDate || transaction.date);
     setTransaction({
@@ -152,6 +157,7 @@ const TransactionModal = () => {
   };
 
   useEffect(() => {
+    // Nếu có id thì đây là chế độ cập nhật, form sẽ được điền dữ liệu giao dịch cũ.
     if (oldTransaction?.id) {
       setTransaction({
         type: oldTransaction?.type || "expense",
@@ -163,6 +169,7 @@ const TransactionModal = () => {
         image: oldTransaction?.image ?? null,
       });
     } else if (oldTransaction?.scanned === "true") {
+      // Nếu đi từ màn quét hóa đơn AI, tự điền các trường AI đọc được.
       setTransaction((prev) => ({
         ...prev,
         amount: Number(oldTransaction.amount) || 0,
@@ -177,6 +184,7 @@ const TransactionModal = () => {
     const { type, amount, description, category, date, walletId, image } =
       transaction;
 
+    // Validate các trường bắt buộc trước khi gọi service lưu giao dịch.
     if (!walletId || !date || !amount || (type === "expense" && !category)) {
       Alert.alert("Giao dịch", "Vui lòng điền đầy đủ thông tin bắt buộc");
       return;
@@ -188,6 +196,7 @@ const TransactionModal = () => {
     ) => {
       if (!user?.uid || !items.length) return;
 
+      // Tạo notification cho từng hạn mức bị gần/vượt sau khi giao dịch được lưu.
       await Promise.all(
         items.map((item) =>
           createNotification({
@@ -204,6 +213,7 @@ const TransactionModal = () => {
       );
     };
 
+    // Hàm lưu chung cho cả thêm mới và cập nhật giao dịch.
     const submitTransaction = async () => {
       let transactionData: TransactionType = {
         type,
@@ -230,6 +240,7 @@ const TransactionModal = () => {
     if (type === "expense") {
       try {
         setLoading(true);
+        // Với giao dịch chi, kiểm tra hạn mức trước khi cho phép lưu.
         const warningRes = await getExceededExpenseLimits(
           walletId,
           amount,
@@ -247,6 +258,7 @@ const TransactionModal = () => {
         const nearLimitItems = warningRes?.data?.nearLimitItems || [];
 
         if (exceededItems.length > 0) {
+          // Nếu vượt hạn mức, yêu cầu người dùng xác nhận trước khi lưu.
           const exceededDetails = formatBudgetWarningDetails(
             exceededItems,
             "exceeded-limit",
@@ -280,6 +292,7 @@ const TransactionModal = () => {
         }
 
         if (nearLimitItems.length > 0) {
+          // Nếu chạm ngưỡng 90% hạn mức, cảnh báo nhưng vẫn cho người dùng tiếp tục.
           const nearLimitDetails = formatBudgetWarningDetails(
             nearLimitItems,
             "near-limit",
@@ -310,7 +323,7 @@ const TransactionModal = () => {
           router.back();
         }
         return;
-      } catch (err) {
+      } catch {
         setLoading(false);
         Alert.alert("Lỗi", "Không thể kiểm tra hạn mức");
         return;
@@ -361,7 +374,7 @@ const TransactionModal = () => {
             </Typo>
             <Dropdown
               style={[styles.dropdownContainer, { borderColor: colors.border }]}
-              activeColor={isDarkMode ? colors.neutral700 : colors.neutral100}
+              activeColor={isDarkMode ? colors.neutral300 : colors.neutral100}
               selectedTextStyle={{
                 color: colors.text,
                 fontSize: verticalScale(14),
@@ -388,7 +401,7 @@ const TransactionModal = () => {
             </Typo>
             <Dropdown
               style={[styles.dropdownContainer, { borderColor: colors.border }]}
-              activeColor={isDarkMode ? colors.neutral700 : colors.neutral100}
+              activeColor={isDarkMode ? colors.neutral300 : colors.neutral100}
               placeholderStyle={{ color: colors.textLight }}
               selectedTextStyle={{
                 color: colors.text,
@@ -424,7 +437,7 @@ const TransactionModal = () => {
                   styles.dropdownContainer,
                   { borderColor: colors.border },
                 ]}
-                activeColor={isDarkMode ? colors.neutral700 : colors.neutral100}
+                activeColor={isDarkMode ? colors.neutral300 : colors.neutral100}
                 placeholderStyle={{ color: colors.textLight }}
                 selectedTextStyle={{
                   color: colors.text,

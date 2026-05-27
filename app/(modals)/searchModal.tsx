@@ -8,7 +8,6 @@ import { useAuth } from "@/contexts/authContext";
 import { useTheme } from "@/contexts/themeContext";
 import useFetchData from "@/hooks/useFetchData";
 import { TransactionType } from "@/types";
-import { useRouter } from "expo-router";
 import { orderBy, where } from "firebase/firestore";
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
@@ -17,9 +16,7 @@ const SearchModal = () => {
   const { user } = useAuth();
   const { colors, isDarkMode } = useTheme();
   const [search, setSearch] = useState("");
-
-  const router = useRouter();
-
+  // Lấy toàn bộ giao dịch của user để tìm kiếm local theo mô tả, loại và danh mục.
   const constraints = [where("uid", "==", user?.uid), orderBy("date", "desc")];
 
   const {
@@ -47,6 +44,7 @@ const SearchModal = () => {
     expense: "chi tiêu",
   };
 
+  // Chuyển key danh mục/loại sang tiếng Việt để người dùng tìm bằng từ khóa tự nhiên.
   const filteredTransactions = allTransactions.filter((item) => {
     if (search.length > 1) {
       const searchLower = search.toLowerCase();
@@ -78,9 +76,9 @@ const SearchModal = () => {
             <Input
               placeholder="Nhập từ khóa (tên, danh mục...)"
               value={search}
-              placeholderTextColor={colors.textLighter}
+              placeholderTextColor={isDarkMode ? colors.textLight : colors.textLighter}
               containerStyle={{
-                backgroundColor: isDarkMode ? colors.neutral800 : colors.neutral200,
+                backgroundColor: isDarkMode ? colors.surface : colors.neutral200,
                 borderColor: colors.border
               }}
               onChangeText={(value) => setSearch(value)}

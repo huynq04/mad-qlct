@@ -8,9 +8,13 @@
     "scheme": "expensetrackerapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.shop.expensetracker"
     },
     "android": {
       "adaptiveIcon": {

@@ -2,12 +2,12 @@ import { Timestamp } from "firebase/firestore";
 import { Icon } from "phosphor-react-native";
 import React, { ReactNode } from "react";
 import {
-  TextInput,
-  TextInputProps,
-  TextProps,
-  TextStyle,
-  TouchableOpacityProps,
-  ViewStyle,
+    TextInput,
+    TextInputProps,
+    TextProps,
+    TextStyle,
+    TouchableOpacityProps,
+    ViewStyle,
 } from "react-native";
 
 export type ScreenWrapperProps = {
@@ -91,6 +91,7 @@ export type TransactionListType = {
   title?: string;
   loading?: boolean;
   emptyListMessage?: string;
+  scrollToTopSignal?: number;
 };
 
 export type TransactionItemProps = {

@@ -2,20 +2,19 @@ import { auth, firestore } from "@/config/firebase";
 import { AuthContextType, UserType } from "@/types";
 import { useRouter } from "expo-router";
 import {
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithCredential,
-  signOut,
-  sendPasswordResetEmail,
-  updatePassword,
-
+    createUserWithEmailAndPassword,
+    onAuthStateChanged,
+    sendPasswordResetEmail,
+    signInWithEmailAndPassword,
+    // GoogleAuthProvider,
+    // signInWithCredential,
+    signOut,
+    updatePassword,
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
-import { GoogleSignin } from "@react-native-google-signin/google-signin";
+// import { GoogleSignin } from "@react-native-google-signin/google-signin";
 
 export const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -25,13 +24,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [user, setUser] = useState<UserType>(null);
   const router = useRouter();
 
-
-  useEffect(() => {
-    GoogleSignin.configure({
-      webClientId: "478282792207-m3fumu4e8rtq0l3fuhti3mvk428cs0g4.apps.googleusercontent.com",
-      offlineAccess: true,
-    });
-  }, []);
+  // Google Sign-In is temporarily disabled because the RNGoogleSignin native module
+  // is not available in the current build.
+  // useEffect(() => {
+  //   GoogleSignin.configure({
+  //     webClientId: "478282792207-m3fumu4e8rtq0l3fuhti3mvk428cs0g4.apps.googleusercontent.com",
+  //     offlineAccess: true,
+  //   });
+  // }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
@@ -61,47 +61,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const loginWithGoogle = async () => {
-    try {
-      await GoogleSignin.hasPlayServices();
-      const response = await GoogleSignin.signIn();
+    // try {
+    //   await GoogleSignin.hasPlayServices();
+    //   const response = await GoogleSignin.signIn();
 
-      if (response.type === 'success') {
-        const idToken = response.data.idToken;
-        if (!idToken) throw new Error("Không lấy được ID Token từ Google");
+    //   if (response.type === "success") {
+    //     const idToken = response.data.idToken;
+    //     if (!idToken) throw new Error("Khong lay duoc ID Token tu Google");
 
-        const credential = GoogleAuthProvider.credential(idToken);
-        const res = await signInWithCredential(auth, credential);
+    //     const credential = GoogleAuthProvider.credential(idToken);
+    //     const res = await signInWithCredential(auth, credential);
 
-        const userRef = doc(firestore, "users", res.user.uid);
-        const userSnap = await getDoc(userRef);
+    //     const userRef = doc(firestore, "users", res.user.uid);
+    //     const userSnap = await getDoc(userRef);
 
-        if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            name: res.user.displayName,
-            email: res.user.email,
-            uid: res.user.uid,
-            image: res.user.photoURL,
-            createdAt: new Date(),
-          });
-        }
+    //     if (!userSnap.exists()) {
+    //       await setDoc(userRef, {
+    //         name: res.user.displayName,
+    //         email: res.user.email,
+    //         uid: res.user.uid,
+    //         image: res.user.photoURL,
+    //         createdAt: new Date(),
+    //       });
+    //     }
 
-        return { success: true, user: res.user };
-      } else {
-        return { success: false, msg: "Đăng nhập bị hủy" };
-      }
-    } catch (error: any) {
-      console.log("Google Sign-in Error: ", error);
-      return { success: false, msg: error.message };
-    }
+    //     return { success: true, user: res.user };
+    //   } else {
+    //     return { success: false, msg: "Dang nhap bi huy" };
+    //   }
+    // } catch (error: any) {
+    //   console.log("Google Sign-in Error: ", error);
+    //   return { success: false, msg: error.message };
+    // }
+    return {
+      success: false,
+      msg: "Đăng nhập bằng Google đang tạm thời tắt.",
+    };
   };
-
 
   const logout = async () => {
     try {
-
       await signOut(auth);
 
-      await GoogleSignin.signOut();
+      // await GoogleSignin.signOut();
 
       console.log("Logged out successfully");
     } catch (error: any) {
@@ -111,7 +113,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const register = async (email: string, password: string, name: string) => {
     try {
-      let response = await createUserWithEmailAndPassword(auth, email, password);
+      let response = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password,
+      );
 
       await setDoc(doc(firestore, "users", response?.user?.uid), {
         name,
@@ -123,7 +129,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return { success: true };
     } catch (error: any) {
       let msg = error.message;
-      if (msg.includes("(auth/email-already-in-use)")) msg = "This email is already in use";
+      if (msg.includes("(auth/email-already-in-use)"))
+        msg = "This email is already in use";
       if (msg.includes("(auth/invalid-email)")) msg = "Invalid email";
       return { success: false, msg };
     }
@@ -151,10 +158,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const resetPassword = async (email: string) => {
     try {
       await sendPasswordResetEmail(auth, email);
-      return { success: true, msg: "Đã gửi link khôi phục! Vui lòng kiểm tra hộp thư." };
+      return {
+        success: true,
+        msg: "Đã gửi link khôi phục! Vui lòng kiểm tra hộp thư.",
+      };
     } catch (error: any) {
       let msg = error.message;
-      if (msg.includes("(auth/user-not-found)")) msg = "Không tìm thấy tài khoản với email này";
+      if (msg.includes("(auth/user-not-found)"))
+        msg = "Không tìm thấy tài khoản với email này";
       if (msg.includes("(auth/invalid-email)")) msg = "Email không hợp lệ";
       return { success: false, msg };
     }
@@ -170,7 +181,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       let msg = error.message;
 
       if (msg.includes("(auth/requires-recent-login)")) {
-        msg = "Vì lý do bảo mật, vui lòng đăng xuất và đăng nhập lại trước khi đổi mật khẩu.";
+        msg =
+          "Vì lý do bảo mật, vui lòng đăng xuất và đăng nhập lại trước khi đổi mật khẩu.";
       }
       return { success: false, msg };
     }

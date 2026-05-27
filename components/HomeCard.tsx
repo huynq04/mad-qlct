@@ -1,36 +1,46 @@
 import { colors, spacingX, spacingY } from "@/constants/theme";
 import { useAuth } from "@/contexts/authContext";
 import useFetchData from "@/hooks/useFetchData";
-import { WalletType } from "@/types";
+import { TransactionType } from "@/types";
 import { scale, verticalScale } from "@/utils/styling";
-import { orderBy, where } from "firebase/firestore";
+import { where } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
+import { useMemo } from "react";
 import { ImageBackground, StyleSheet, View } from "react-native";
 import Typo from "./Typo";
 
 const HomeCard = () => {
   const { user } = useAuth();
 
-  const {
-    data: wallets,
-    error,
-    loading: walletLoading,
-  } = useFetchData<WalletType>("wallets", [
-    where("uid", "==", user?.uid),
-    orderBy("created", "desc"),
-  ]);
+  const { data: transactions, loading: transactionsLoading } =
+    useFetchData<TransactionType>(user?.uid ? "transactions" : "", [
+      where("uid", "==", user?.uid),
+    ]);
 
-  const getTotals = () => {
-    return wallets.reduce(
-      (totals: any, item: WalletType) => {
-        totals.balance = totals.balance + Number(item.amount);
-        totals.income = totals.income + Number(item.totalIncome);
-        totals.expenses = totals.expenses + Number(item.totalExpenses);
-        return totals;
+  const totals = useMemo(() => {
+    const incomeExpenses = transactions.reduce(
+      (sum, item) => {
+        const amount = Number(item.amount || 0);
+
+        if (item.type === "income") {
+          sum.income += amount;
+        }
+
+        if (item.type === "expense") {
+          sum.expenses += amount;
+        }
+
+        return sum;
       },
-      { balance: 0, income: 0, expenses: 0 },
+      { income: 0, expenses: 0 },
     );
-  };
+
+    return {
+      balance: incomeExpenses.income - incomeExpenses.expenses,
+      income: incomeExpenses.income,
+      expenses: incomeExpenses.expenses,
+    };
+  }, [transactions]);
 
   return (
     <ImageBackground
@@ -53,9 +63,9 @@ const HomeCard = () => {
         </View>
 
         <Typo color={colors.black} size={30} fontWeight="bold">
-          {walletLoading
+          {transactionsLoading
             ? "----"
-            : `${getTotals()?.balance?.toLocaleString("vi-VN")}đ`}
+            : `${totals.balance.toLocaleString("vi-VN")}đ`}
         </Typo>
 
         {/* Stats: Income & Expense */}
@@ -78,9 +88,9 @@ const HomeCard = () => {
 
             <View style={{ alignSelf: "center" }}>
               <Typo size={17} color={colors.green} fontWeight="600">
-                {walletLoading
+                {transactionsLoading
                   ? "----"
-                  : `${getTotals()?.income?.toLocaleString("vi-VN")}đ`}
+                  : `${totals.income.toLocaleString("vi-VN")}đ`}
               </Typo>
             </View>
           </View>
@@ -103,9 +113,9 @@ const HomeCard = () => {
 
             <View style={{ alignSelf: "center" }}>
               <Typo size={17} color={colors.rose} fontWeight="600">
-                {walletLoading
+                {transactionsLoading
                   ? "----"
-                  : `${getTotals()?.expenses?.toLocaleString("vi-VN")}đ`}
+                  : `${totals.expenses.toLocaleString("vi-VN")}đ`}
               </Typo>
             </View>
           </View>

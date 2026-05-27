@@ -42,8 +42,8 @@ const Wallet = () => {
                         <Typo size={45} fontWeight={"500"}>
                             ${getTotalBalance()?.toFixed(2)}
                         </Typo>
-                        <Typo size={16} color={colors.neutral300}>
-                            Total Balance
+                        <Typo size={20} color={colors.neutral900}>
+                            Tổng số dư
                         </Typo>
                     </View>
                 </View>

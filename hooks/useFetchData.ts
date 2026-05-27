@@ -16,7 +16,7 @@ const useFetchData = <T>(
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // 1. Chặn nếu không có tên collection (tránh lỗi thừa)
+    // Chặn nếu chưa có collectionName, thường xảy ra khi user.uid chưa sẵn sàng.
     if (!collectionName) {
       setLoading(false);
       return;
@@ -27,12 +27,12 @@ const useFetchData = <T>(
     try {
       const collectionRef = collection(firestore, collectionName);
 
-      // 2. Tạo query. Nếu constraints có chứa undefined, Firebase có thể văng lỗi
-      // Chúng ta bọc trong try-catch để app không bị crash trắng màn hình
+      // Tạo query Firestore từ collection và điều kiện truyền vào.
       const q = query(collectionRef, ...constraints);
 
-      setLoading(true); // Bắt đầu load dữ liệu mới
+      setLoading(true);
 
+      // Lắng nghe realtime để UI tự cập nhật khi Firestore thay đổi.
       unsub = onSnapshot(
         q,
         (snapshot) => {
@@ -54,15 +54,14 @@ const useFetchData = <T>(
         },
       );
     } catch (err: any) {
-      // 3. Nếu query lỗi (do chưa có UID), ta im lặng đợi lần render sau
+      // Nếu query lỗi do constraints chưa hợp lệ, đợi lần render sau thay vì crash app.
       console.log("Waiting for valid query constraints...");
       setLoading(false);
     }
 
     return () => unsub();
 
-    // CỰC KỲ QUAN TRỌNG: Lắng nghe sự thay đổi của constraints và collectionName
-    // Dùng JSON.stringify để so sánh nội dung mảng thay vì so sánh địa chỉ ô nhớ (reference)
+    // Dùng JSON.stringify để theo dõi thay đổi nội dung constraints, không chỉ địa chỉ mảng.
   }, [collectionName, JSON.stringify(constraints)]);
 
   return { data, loading, error };

@@ -5,7 +5,7 @@ import Typo from "@/components/Typo";
 import { expenseCategories } from "@/constants/data";
 import { radius, spacingX, spacingY } from "@/constants/theme";
 import { useAuth } from "@/contexts/authContext";
-import { useTheme } from "@/contexts/themeContext"; // 👈 Vũ khí tối thượng
+import { useTheme } from "@/contexts/themeContext";
 import {
   buildFallbackFinancialSummary,
   generateFinancialSummaryWithAI,
@@ -40,9 +40,10 @@ const AISummary = () => {
   const { user } = useAuth();
   const router = useRouter();
 
-  // Lôi bộ màu và chế độ Sáng/Tối ra dùng
+  // Lấy bộ màu và trạng thái sáng/tối để màn hình AI Summary đồng bộ theme.
   const { colors, isDarkMode } = useTheme();
 
+  // Tải dữ liệu thống kê tháng, gọi AI sinh nhận xét và cập nhật state hiển thị.
   const loadMonthlyInsight = useCallback(
     async (isRefresh = false) => {
       if (!user?.uid) return;
@@ -54,6 +55,7 @@ const AISummary = () => {
       }
 
       try {
+        // Lấy các chỉ số tháng hiện tại và payload rút gọn cho AI.
         const statsRes = await fetchMonthlyInsightStats(user.uid as string);
         if (!statsRes.success || !statsRes.data) {
           Alert.alert(
@@ -66,6 +68,7 @@ const AISummary = () => {
         const statsData = statsRes.data as MonthlyInsightStatsType;
         setInsightStats(statsData);
 
+        // Gọi API AI để sinh summary/highlights/suggestions từ dữ liệu thống kê.
         const aiRes = await generateFinancialSummaryWithAI(statsData.aiPayload);
         if (aiRes.success && aiRes.data) {
           setAiSummary(aiRes.data as AISummaryResult);
@@ -88,6 +91,7 @@ const AISummary = () => {
   );
 
   const summary = useMemo(() => {
+    // Nếu AI chưa trả kết quả, dùng fallback để giao diện vẫn có dữ liệu.
     if (!insightStats) return null;
     return aiSummary || buildFallbackFinancialSummary(insightStats.aiPayload);
   }, [aiSummary, insightStats]);
@@ -108,6 +112,7 @@ const AISummary = () => {
   };
 
   const getToneStyles = (tone: "positive" | "warning" | "neutral") => {
+    // Mỗi tone của AI tương ứng với một bộ màu hiển thị riêng.
     if (tone === "positive") {
       return {
         bg: "rgba(22,163,74,0.15)",
@@ -128,6 +133,7 @@ const AISummary = () => {
     };
   };
 
+  // Render icon danh mục dựa trên key category đã thống kê từ giao dịch.
   const renderCategoryIcon = (item: MonthlyCategoryBreakdownType) => {
     const IconComponent =
       expenseCategories[item.key]?.icon || expenseCategories.others.icon;
@@ -162,7 +168,13 @@ const AISummary = () => {
             rightIcon={
               <TouchableOpacity
                 onPress={() => loadMonthlyInsight(true)}
-                style={[styles.refreshButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                style={[
+                  styles.refreshButton,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                  },
+                ]}
                 disabled={refreshing}
               >
                 {refreshing ? (
@@ -184,13 +196,6 @@ const AISummary = () => {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.monthHeaderWrap}>
-            <TouchableOpacity style={[styles.monthNavButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Icons.CaretLeft
-                size={verticalScale(18)}
-                color={colors.textLight} // Đổi màu
-              />
-            </TouchableOpacity>
-
             <View style={styles.monthTextWrap}>
               <Typo size={18} fontWeight="700">
                 {insightStats.monthLabel}
@@ -199,13 +204,6 @@ const AISummary = () => {
                 Báo cáo tháng
               </Typo>
             </View>
-
-            <TouchableOpacity style={[styles.monthNavButton, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Icons.CaretRight
-                size={verticalScale(18)}
-                color={colors.textLight} // Đổi màu
-              />
-            </TouchableOpacity>
           </View>
 
           {/* Thẻ Hero màu xanh lá - Giữ nguyên màu trắng cho chữ bên trong vì nền luôn tối */}
@@ -248,12 +246,19 @@ const AISummary = () => {
             </View>
           </LinearGradient>
 
-          <View style={[styles.budgetCard, { backgroundColor: colors.surface }]}>
+          <View
+            style={[styles.budgetCard, { backgroundColor: colors.surface }]}
+          >
             {insightStats.hasMonthlyBudget ? (
               <>
                 <View style={styles.budgetTopRow}>
                   <View style={styles.budgetCircleOuter}>
-                    <View style={[styles.budgetCircleInner, { backgroundColor: colors.surface }]}>
+                    <View
+                      style={[
+                        styles.budgetCircleInner,
+                        { backgroundColor: colors.surface },
+                      ]}
+                    >
                       <Typo size={18} fontWeight="700">
                         {insightStats.budgetUsedPercent}%
                       </Typo>
@@ -289,7 +294,16 @@ const AISummary = () => {
                   </View>
                 </View>
 
-                <View style={[styles.progressTrack, { backgroundColor: isDarkMode ? colors.neutral700 : colors.neutral200 }]}>
+                <View
+                  style={[
+                    styles.progressTrack,
+                    {
+                      backgroundColor: isDarkMode
+                        ? colors.neutral700
+                        : colors.neutral200,
+                    },
+                  ]}
+                >
                   <LinearGradient
                     colors={["#a3e635", "#ef4444"]}
                     start={{ x: 0, y: 0.5 }}
@@ -353,8 +367,14 @@ const AISummary = () => {
 
           <View style={styles.kpiGrid}>
             <View style={[styles.kpiCard, { backgroundColor: colors.surface }]}>
-              <View style={[styles.kpiIconWrap, { backgroundColor: "#1d4ed8" }]}>
-                <Icons.ArrowUp size={verticalScale(16)} color="#ffffff" weight="bold" />
+              <View
+                style={[styles.kpiIconWrap, { backgroundColor: "#1d4ed8" }]}
+              >
+                <Icons.ArrowUp
+                  size={verticalScale(16)}
+                  color="#ffffff"
+                  weight="bold"
+                />
               </View>
               <View style={styles.kpiBadgeWarning}>
                 <Typo size={11} color="#f87171" fontWeight="700">
@@ -364,12 +384,20 @@ const AISummary = () => {
               <Typo size={22} color={colors.rose} fontWeight="700">
                 {formatCurrency(insightStats.totalExpense)}
               </Typo>
-              <Typo size={12} color={colors.textLight}>Tổng chi tiêu</Typo>
+              <Typo size={12} color={colors.textLight}>
+                Tổng chi tiêu
+              </Typo>
             </View>
 
             <View style={[styles.kpiCard, { backgroundColor: colors.surface }]}>
-              <View style={[styles.kpiIconWrap, { backgroundColor: "#065f46" }]}>
-                <Icons.PiggyBank size={verticalScale(16)} color={colors.primary} weight="fill" />
+              <View
+                style={[styles.kpiIconWrap, { backgroundColor: "#065f46" }]}
+              >
+                <Icons.PiggyBank
+                  size={verticalScale(16)}
+                  color={colors.primary}
+                  weight="fill"
+                />
               </View>
               <View style={styles.kpiBadgePositive}>
                 <Typo size={11} color="#4ade80" fontWeight="700">
@@ -379,35 +407,62 @@ const AISummary = () => {
               <Typo size={22} color="#4ade80" fontWeight="700">
                 {formatCurrency(insightStats.savings)}
               </Typo>
-              <Typo size={12} color={colors.textLight}>Tiết kiệm</Typo>
+              <Typo size={12} color={colors.textLight}>
+                Tiết kiệm
+              </Typo>
             </View>
 
             <View style={[styles.kpiCard, { backgroundColor: colors.surface }]}>
-              <View style={[styles.kpiIconWrap, { backgroundColor: "#6d28d9" }]}>
-                <Icons.Receipt size={verticalScale(16)} color="#ffffff" weight="bold" />
+              <View
+                style={[styles.kpiIconWrap, { backgroundColor: "#6d28d9" }]}
+              >
+                <Icons.Receipt
+                  size={verticalScale(16)}
+                  color="#ffffff"
+                  weight="bold"
+                />
               </View>
               <View style={styles.kpiBadgeNeutral}>
                 <Typo size={11} color={colors.primary} fontWeight="700">
-                  {formatSignedPercent(insightStats.transactionCountChangePercent)}
+                  {formatSignedPercent(
+                    insightStats.transactionCountChangePercent,
+                  )}
                 </Typo>
               </View>
               <Typo size={22} color={colors.text} fontWeight="700">
                 {insightStats.transactionCount}
               </Typo>
-              <Typo size={12} color={colors.textLight}>Giao dịch</Typo>
+              <Typo size={12} color={colors.textLight}>
+                Giao dịch
+              </Typo>
             </View>
 
             <View style={[styles.kpiCard, { backgroundColor: colors.surface }]}>
-              <View style={[styles.kpiIconWrap, { backgroundColor: "#be185d" }]}>
-                <Icons.ForkKnife size={verticalScale(16)} color="#ffffff" weight="fill" />
+              <View
+                style={[styles.kpiIconWrap, { backgroundColor: "#be185d" }]}
+              >
+                <Icons.ForkKnife
+                  size={verticalScale(16)}
+                  color="#ffffff"
+                  weight="fill"
+                />
               </View>
               <View style={styles.kpiBadgeWarning}>
-                <Typo size={11} color="#f87171" fontWeight="700">Top</Typo>
+                <Typo size={11} color="#f87171" fontWeight="700">
+                  Top
+                </Typo>
               </View>
-              <Typo size={20} color={colors.text} fontWeight="700" textProps={{ numberOfLines: 1 }}>
+              <Typo
+                size={20}
+                color={colors.text}
+                fontWeight="700"
+                textProps={{ numberOfLines: 1 }}
+              >
                 {insightStats.topCategoryLabel}
               </Typo>
-              <Typo size={12} color={colors.textLight}>Chi nhiều nhất</Typo>
+              <Typo size={12} color={colors.textLight}>
+                Chi nhiều nhất
+              </Typo>
             </View>
           </View>
 
@@ -422,12 +477,20 @@ const AISummary = () => {
 
           <View style={styles.categoryList}>
             {insightStats.categories.map((item, index) => (
-              <View key={`${item.key}-${index}`} style={[styles.categoryCard, { backgroundColor: colors.surface }]}>
+              <View
+                key={`${item.key}-${index}`}
+                style={[
+                  styles.categoryCard,
+                  { backgroundColor: colors.surface },
+                ]}
+              >
                 <View style={styles.categoryTopRow}>
                   <View style={styles.categoryInfoWrap}>
                     {renderCategoryIcon(item)}
                     <View>
-                      <Typo size={16} fontWeight="700">{item.label}</Typo>
+                      <Typo size={16} fontWeight="700">
+                        {item.label}
+                      </Typo>
                       <Typo size={12} color={colors.textLight}>
                         {`${item.percent}% tổng chi tiêu`}
                       </Typo>
@@ -438,7 +501,16 @@ const AISummary = () => {
                   </Typo>
                 </View>
 
-                <View style={[styles.categoryProgressTrack, { backgroundColor: isDarkMode ? colors.neutral700 : colors.neutral200 }]}>
+                <View
+                  style={[
+                    styles.categoryProgressTrack,
+                    {
+                      backgroundColor: isDarkMode
+                        ? colors.neutral700
+                        : colors.neutral200,
+                    },
+                  ]}
+                >
                   <View
                     style={[
                       styles.categoryProgressFill,
@@ -459,7 +531,7 @@ const AISummary = () => {
             fontWeight="700"
             style={styles.sectionTitle}
           >
-            Gợi ý từ AI
+            Gợi ý cải thiện
           </Typo>
 
           <View style={styles.suggestionList}>
@@ -473,14 +545,35 @@ const AISummary = () => {
                     : Icons.ChartLineUp;
 
               return (
-                <View key={`${item.title}-${index}`} style={[styles.suggestionCard, { backgroundColor: colors.surface }]}>
-                  <View style={[styles.suggestionIcon, { backgroundColor: tone.bg }]}>
-                    <IconComponent size={verticalScale(16)} color={tone.text} weight="fill" />
+                <View
+                  key={`${item.title}-${index}`}
+                  style={[
+                    styles.suggestionCard,
+                    { backgroundColor: colors.surface },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.suggestionIcon,
+                      { backgroundColor: tone.bg },
+                    ]}
+                  >
+                    <IconComponent
+                      size={verticalScale(16)}
+                      color={tone.text}
+                      weight="fill"
+                    />
                   </View>
 
                   <View style={styles.suggestionContent}>
-                    <Typo size={16} fontWeight="700">{item.title}</Typo>
-                    <Typo size={14} color={colors.textLight} style={styles.suggestionText}>
+                    <Typo size={16} fontWeight="700">
+                      {item.title}
+                    </Typo>
+                    <Typo
+                      size={14}
+                      color={colors.textLight}
+                      style={styles.suggestionText}
+                    >
                       {item.description}
                     </Typo>
                   </View>
@@ -524,23 +617,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   monthHeaderWrap: {
-    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
     marginTop: spacingY._5,
   },
   monthTextWrap: {
     alignItems: "center",
     justifyContent: "center",
     gap: spacingY._5,
-  },
-  monthNavButton: {
-    width: verticalScale(42),
-    height: verticalScale(42),
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
   },
   heroCard: {
     borderRadius: radius._30,
@@ -579,7 +663,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._30,
     padding: spacingY._15,
     gap: spacingY._15,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 5,
@@ -662,7 +746,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacingX._12,
     paddingVertical: spacingY._12,
     gap: spacingY._7,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 5,
@@ -703,7 +787,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._20,
     padding: spacingY._12,
     gap: spacingY._10,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 5,
@@ -746,7 +830,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: spacingX._12,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 5,

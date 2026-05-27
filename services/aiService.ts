@@ -1,19 +1,24 @@
-import { GEMINI_API_KEY } from "@/constants";
+import { GEMINI_API_KEY, GROQ_API_KEY } from "@/constants";
 import {
-    AISummaryHighlight,
-    AISummaryResult,
-    AISummarySuggestion,
-    MonthlySummaryAIPayloadType,
-    ResponseType,
-    ScanResult,
+  AISummaryHighlight,
+  AISummaryResult,
+  AISummarySuggestion,
+  MonthlySummaryAIPayloadType,
+  ResponseType,
+  ScanResult,
 } from "@/types";
 import axios from "axios";
 import { readAsStringAsync } from "expo-file-system/legacy";
 
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_TEXT_MODEL = "llama-3.3-70b-versatile";
+// const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
+// Prompt yêu cầu AI đọc hóa đơn và chỉ trả JSON để dễ parse tự động.
 const SCAN_PROMPT = `Extract from this receipt: totalAmount (number), date (DD/MM/YYYY), description (items bought, Vietnamese, max 5), category (one of: Ăn uống|Di chuyển|Mua sắm|Y tế|Giải trí|Giáo dục|Hóa đơn|Khác). Reply ONLY valid JSON, no markdown.`;
 
+// Prompt định nghĩa vai trò, schema JSON và các ràng buộc nội dung cho báo cáo tài chính.
 const FINANCIAL_SUMMARY_PROMPT = `Bạn là chuyên gia tài chính cá nhân người Việt Nam.
 Hãy phân tích dữ liệu chi tiêu tháng và trả về JSON hợp lệ (không markdown) theo đúng schema:
 {
@@ -31,9 +36,31 @@ Yêu cầu:
 - highlights: từ 2 đến 3 item.
 - suggestions: từ 2 đến 3 item.
 - Ưu tiên hành động cụ thể, dễ thực hiện.
-- Nếu hasPreviousExpenseData = false: KHÔNG được so sánh với tháng trước, không dùng cụm "so với tháng trước".
-- Không dùng ký tự markdown.`;
+	- Nếu hasPreviousExpenseData = false: KHÔNG được so sánh với tháng trước, không dùng cụm "so với tháng trước".
+	- Không dùng ký tự markdown.`;
 
+// Lấy nội dung text từ response dạng OpenAI-compatible của Groq.
+const extractChatContent = (responseData: any): string => {
+  const content = responseData?.choices?.[0]?.message?.content;
+
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (typeof part?.text === "string") return part.text;
+        return "";
+      })
+      .join("");
+  }
+
+  return "";
+};
+
+// Chuẩn hóa tone AI trả về để UI chỉ nhận 3 giá trị hợp lệ.
 const normalizeTone = (tone: unknown): "positive" | "warning" | "neutral" => {
   if (tone === "positive" || tone === "warning" || tone === "neutral") {
     return tone;
@@ -41,6 +68,7 @@ const normalizeTone = (tone: unknown): "positive" | "warning" | "neutral" => {
   return "neutral";
 };
 
+// Sửa một số lỗi JSON thường gặp khi AI trả thiếu dấu đóng hoặc dư dấu phẩy.
 const repairIncompleteJson = (text: string) => {
   let cleaned = text
     .replace(/```json|```/g, "")
@@ -99,6 +127,7 @@ const repairIncompleteJson = (text: string) => {
   return cleaned;
 };
 
+// Parse JSON an toàn từ response AI, có thử làm sạch markdown và sửa JSON đơn giản.
 const safeParseJSON = (text: string): any | null => {
   const cleanText = text.replace(/```json|```/g, "").trim();
   const parseCandidates: string[] = [];
@@ -131,10 +160,12 @@ const safeParseJSON = (text: string): any | null => {
   return null;
 };
 
+// Kiểm tra AI có nhắc so sánh tháng trước trong khi dữ liệu không cho phép không.
 const hasPreviousComparisonText = (text: string) => {
   return /tháng trước|so với tháng trước|so với tháng liền trước/i.test(text);
 };
 
+// Sinh gợi ý tài chính bằng rule nội bộ để dùng khi AI lỗi hoặc thiếu dữ liệu.
 const buildRuleBasedSuggestions = (
   payload: MonthlySummaryAIPayloadType,
 ): AISummarySuggestion[] => {
@@ -208,6 +239,7 @@ const buildRuleBasedSuggestions = (
 export const buildFallbackFinancialSummary = (
   payload: MonthlySummaryAIPayloadType,
 ): AISummaryResult => {
+  // Tạo báo cáo dự phòng để màn hình AI Summary luôn có dữ liệu hiển thị.
   const formatCurrencyLocal = (value: number) => {
     return `${Math.abs(value).toLocaleString("vi-VN")}đ`;
   };
@@ -266,6 +298,7 @@ export const scanInvoiceWithAI = async (
       ? "image/png"
       : "image/jpeg";
 
+    // Body gọi Gemini Vision: gửi ảnh base64 kèm prompt đọc hóa đơn.
     const requestBody = {
       contents: [
         {
@@ -289,6 +322,7 @@ export const scanInvoiceWithAI = async (
       },
     };
 
+    // API ngoài: Gemini generateContent dùng để trích xuất thông tin hóa đơn.
     const response = await axios.post(GEMINI_API_URL, requestBody, {
       headers: { "Content-Type": "application/json" },
       timeout: 30000,
@@ -351,35 +385,67 @@ export const scanInvoiceWithAI = async (
 export const generateFinancialSummaryWithAI = async (
   payload: MonthlySummaryAIPayloadType,
 ): Promise<ResponseType> => {
+  // Chuẩn bị fallback trước để bất kỳ lỗi AI nào cũng không làm trống giao diện.
   const fallback = buildFallbackFinancialSummary(payload);
   const fallbackHighlights = fallback.highlights;
   const fallbackSuggestions = fallback.suggestions;
 
   try {
+    // Gemini format (legacy):
+    // const requestBody = {
+    //   contents: [
+    //     {
+    //       parts: [
+    //         {
+    //           text: `${FINANCIAL_SUMMARY_PROMPT}\n\nDữ liệu đầu vào:\n${JSON.stringify(payload)}`,
+    //         },
+    //       ],
+    //     },
+    //   ],
+    //   generationConfig: {
+    //     temperature: 0.35,
+    //     maxOutputTokens: 700,
+    //     responseMimeType: "application/json",
+    //   },
+    // };
+
+    // Body gọi Groq Chat Completions, ép model trả về JSON object đúng schema.
     const requestBody = {
-      contents: [
+      model: GROQ_TEXT_MODEL,
+      messages: [
         {
-          parts: [
-            {
-              text: `${FINANCIAL_SUMMARY_PROMPT}\n\nDữ liệu đầu vào:\n${JSON.stringify(payload)}`,
-            },
-          ],
+          role: "system",
+          content: FINANCIAL_SUMMARY_PROMPT,
+        },
+        {
+          role: "user",
+          content: `Dữ liệu đầu vào:\n${JSON.stringify(payload)}`,
         },
       ],
-      generationConfig: {
-        temperature: 0.35,
-        maxOutputTokens: 700,
-        responseMimeType: "application/json",
+      temperature: 0.35,
+      max_tokens: 700,
+      response_format: {
+        type: "json_object",
       },
     };
 
-    const response = await axios.post(GEMINI_API_URL, requestBody, {
-      headers: { "Content-Type": "application/json" },
+    // API ngoài: Groq dùng để sinh nhận xét, điểm nổi bật và gợi ý cải thiện.
+    const response = await axios.post(GROQ_API_URL, requestBody, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${GROQ_API_KEY}`,
+      },
       timeout: 30000,
     });
 
-    const text =
-      response.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    // Gemini call (legacy):
+    // const response = await axios.post(GEMINI_API_URL, requestBody, {
+    //   headers: { "Content-Type": "application/json" },
+    //   timeout: 30000,
+    // });
+
+    const text = extractChatContent(response.data);
+    // const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     if (!text) {
       return { success: true, data: fallback };
@@ -396,11 +462,13 @@ export const generateFinancialSummaryWithAI = async (
         ? parsed.summary.trim()
         : fallback.summary;
 
+    // Nếu không có dữ liệu tháng trước, loại bỏ nội dung AI tự ý so sánh tháng trước.
     const safeSummary =
       !payload.hasPreviousExpenseData && hasPreviousComparisonText(summary)
         ? fallback.summary
         : summary;
 
+    // Chuẩn hóa highlights để tránh thiếu text/tone làm lỗi UI.
     const highlights: AISummaryHighlight[] = Array.isArray(parsed?.highlights)
       ? parsed.highlights.slice(0, 3).map((item: any) => ({
           text:
@@ -424,6 +492,7 @@ export const generateFinancialSummaryWithAI = async (
         })
       : highlights;
 
+    // Chuẩn hóa suggestions, thiếu trường nào thì lấy từ fallback tương ứng.
     const suggestions: AISummarySuggestion[] = Array.isArray(
       parsed?.suggestions,
     )
@@ -471,6 +540,7 @@ export const generateFinancialSummaryWithAI = async (
         })
       : suggestions;
 
+    // Kết quả cuối cùng đã được kiểm tra và luôn có đủ summary/highlights/suggestions.
     const result: AISummaryResult = {
       summary: safeSummary,
       highlights: safeHighlights.length ? safeHighlights : fallback.highlights,

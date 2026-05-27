@@ -1,5 +1,6 @@
 import { expenseCategories, incomeCategory } from "@/constants/data";
 import { radius, spacingX, spacingY } from "@/constants/theme";
+import { useTheme } from "@/contexts/themeContext";
 import {
   TransactionItemProps,
   TransactionListType,
@@ -7,25 +8,49 @@ import {
 } from "@/types";
 import { verticalScale } from "@/utils/styling";
 import { FlashList } from "@shopify/flash-list";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Timestamp } from "firebase/firestore";
+import React, { useCallback, useEffect, useRef } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import Loading from "./Loading";
 import Typo from "./Typo";
-import { useTheme } from "@/contexts/themeContext";
 
 const TransactionList = ({
   data,
   title,
   loading,
   emptyListMessage,
+  scrollToTopSignal,
 }: TransactionListType) => {
   const router = useRouter();
-
+  const listRef = useRef<any>(null);
 
   const { colors, isDarkMode } = useTheme();
 
+  useFocusEffect(
+    useCallback(() => {
+      // Khi quay lại màn hình chứa danh sách, tự đưa danh sách về đầu.
+      const frameId = requestAnimationFrame(() => {
+        listRef.current?.scrollToOffset({ offset: 0, animated: false });
+      });
+
+      return () => {
+        cancelAnimationFrame(frameId);
+      };
+    }, []),
+  );
+
+  useEffect(() => {
+    if (scrollToTopSignal === undefined) return;
+
+    // Cho phép màn hình cha chủ động yêu cầu danh sách scroll lên đầu.
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    });
+  }, [scrollToTopSignal]);
+
+  // Mở modal chi tiết/cập nhật giao dịch và truyền dữ liệu hiện tại qua route params.
   const handleClick = (item: TransactionType) => {
     router.push({
       pathname: "/(modals)/transactionModal",
@@ -53,6 +78,7 @@ const TransactionList = ({
 
       <View style={styles.list}>
         <FlashList
+          ref={listRef}
           data={data}
           renderItem={({ item, index }) => (
             <TransactionItem
@@ -67,8 +93,7 @@ const TransactionList = ({
         {!loading && data?.length === 0 && (
           <Typo
             size={15}
-
-            color={isDarkMode ? colors.neutral400 : '#666666'}
+            color={isDarkMode ? colors.neutral400 : "#666666"}
             style={{ textAlign: "center", marginTop: spacingY._15 }}
           >
             {emptyListMessage}
@@ -90,14 +115,14 @@ const TransactionItem = ({
   index,
   handleClick,
 }: TransactionItemProps) => {
-
-
   const { colors, isDarkMode } = useTheme();
 
+  // Thu nhập dùng icon/danh mục riêng, chi tiêu lấy theo category đã lưu.
   let category =
-    item?.type == "income" ? incomeCategory : expenseCategories[item.category!];
+    item?.type === "income" ? incomeCategory : expenseCategories[item.category!];
   const IconComponent = category.icon;
 
+  // Firestore lưu ngày dạng Timestamp nên cần đổi sang Date để hiển thị.
   const date = (item?.date as Timestamp)
     ?.toDate()
     ?.toLocaleDateString("vi-VN", {
@@ -112,11 +137,7 @@ const TransactionItem = ({
         .damping(14)}
     >
       <TouchableOpacity
-        style={[
-          styles.row,
-
-          { backgroundColor: colors.surface }
-        ]}
+        style={[styles.row, { backgroundColor: colors.surface }]}
         onPress={() => handleClick(item)}
       >
         <View style={[styles.icon, { backgroundColor: category.bgColor }]}>
@@ -133,8 +154,7 @@ const TransactionItem = ({
           <Typo size={17}>{category.label}</Typo>
           <Typo
             size={12}
-
-            color={isDarkMode ? colors.neutral400 : '#666666'}
+            color={isDarkMode ? colors.neutral700 : "#666666"}
             textProps={{ numberOfLines: 1 }}
           >
             {item?.description}
@@ -149,7 +169,7 @@ const TransactionItem = ({
             {`${item?.type === "income" ? "+ " : "- "}${item?.amount.toLocaleString("vi-VN")}đ`}
           </Typo>
 
-          <Typo size={13} color={isDarkMode ? colors.neutral400 : '#666666'}>
+          <Typo size={13} color={isDarkMode ? colors.neutral700 : "#666666"}>
             {date}
           </Typo>
         </View>
@@ -193,7 +213,7 @@ const styles = StyleSheet.create({
     borderRadius: radius._17,
     paddingHorizontal: spacingX._10,
 
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,

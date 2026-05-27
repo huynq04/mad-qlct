@@ -14,7 +14,7 @@ import {
   getBudgetByWalletId,
 } from "@/services/budgetService";
 import { BudgetType, ExpenseLimitPeriod, WalletType } from "@/types";
-import { scale, verticalScale } from "@/utils/styling";
+import { verticalScale } from "@/utils/styling";
 import { orderBy, where } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
 import React, { useEffect, useState } from "react";
@@ -76,7 +76,8 @@ const ExpenseLimitWarningModal = () => {
     const res = await getBudgetByWalletId(walletId);
     if (res.success) {
       const sortedBudgets = (res.data || []).sort(
-        (a: BudgetType, b: BudgetType) => periodOrder[a.type] - periodOrder[b.type],
+        (a: BudgetType, b: BudgetType) =>
+          periodOrder[a.type] - periodOrder[b.type],
       );
       setBudgets(sortedBudgets);
     }
@@ -143,15 +144,27 @@ const ExpenseLimitWarningModal = () => {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.inputContainer}>
-            <Typo color={colors.textLight} size={16}>Chọn ví</Typo>
+            <Typo color={colors.textLight} size={16}>
+              Chọn ví
+            </Typo>
             <Dropdown
               style={[styles.dropdownContainer, { borderColor: colors.border }]}
-              activeColor={isDarkMode ? colors.neutral700 : colors.neutral100}
+              activeColor={isDarkMode ? colors.neutral300 : colors.neutral100}
               placeholderStyle={{ color: colors.textLight }}
-              selectedTextStyle={{ color: colors.text, fontSize: verticalScale(14) }}
+              selectedTextStyle={{
+                color: colors.text,
+                fontSize: verticalScale(14),
+              }}
               itemTextStyle={{ color: colors.text }}
-              containerStyle={{ backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius._15 }}
-              data={wallets.map((wallet) => ({ label: wallet.name, value: wallet.id }))}
+              containerStyle={{
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+                borderRadius: radius._15,
+              }}
+              data={wallets.map((wallet) => ({
+                label: wallet.name,
+                value: wallet.id,
+              }))}
               maxHeight={300}
               labelField="label"
               valueField="value"
@@ -161,19 +174,25 @@ const ExpenseLimitWarningModal = () => {
             />
           </View>
 
-          <Typo color={colors.text} size={16} fontWeight="600">Danh sách cảnh báo</Typo>
+          <Typo color={colors.text} size={16} fontWeight="600">
+            Danh sách cảnh báo
+          </Typo>
 
           <View style={styles.warningList}>
             {budgets.map((item) => (
               <View
                 style={[
                   styles.warningItem,
-                  { backgroundColor: colors.surface, borderColor: colors.border }
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                  },
                 ]}
                 key={item.id || item.type}
               >
                 <Typo size={15} color={colors.text}>
-                  {item.amount.toLocaleString("vi-VN")}đ - {periodLabel[item.type]}
+                  {item.amount.toLocaleString("vi-VN")}đ -{" "}
+                  {periodLabel[item.type]}
                 </Typo>
 
                 <TouchableOpacity
@@ -181,14 +200,20 @@ const ExpenseLimitWarningModal = () => {
                   onPress={() => onDeleteBudget(item.id)}
                   activeOpacity={0.8}
                 >
-                  <Icons.Trash size={verticalScale(16)} color="#fff" weight="bold" />
+                  <Icons.Trash
+                    size={verticalScale(16)}
+                    color="#fff"
+                    weight="bold"
+                  />
                 </TouchableOpacity>
               </View>
             ))}
 
             {!budgets.length && (
               <View style={[styles.emptyBox, { borderColor: colors.border }]}>
-                <Typo color={colors.textLighter} size={14}>Chưa có cảnh báo nào</Typo>
+                <Typo color={colors.textLighter} size={14}>
+                  Chưa có cảnh báo nào
+                </Typo>
               </View>
             )}
           </View>
@@ -197,51 +222,91 @@ const ExpenseLimitWarningModal = () => {
 
       <View style={[styles.footer, { borderTopColor: colors.border }]}>
         <Button onPress={() => setShowAddModal(true)} style={{ flex: 1 }}>
-          <Typo color={colors.black} fontWeight={"700"} size={18}>Thêm cảnh báo mới</Typo>
+          <Typo color={colors.black} fontWeight={"700"} size={18}>
+            Thêm cảnh báo mới
+          </Typo>
         </Button>
       </View>
 
       <Modal visible={showAddModal} transparent animationType="fade">
         <View style={styles.overlay}>
-          <View style={[styles.addModalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Typo size={18} fontWeight={"700"}>Thêm giới hạn</Typo>
+          <View
+            style={[
+              styles.addModalCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <Typo size={18} fontWeight={"700"}>
+              Thêm giới hạn
+            </Typo>
 
             <View style={styles.inputContainer}>
-              <Typo color={colors.textLight} size={14}>Khoảng thời gian</Typo>
+              <Typo color={colors.textLight} size={14}>
+                Khoảng thời gian
+              </Typo>
               <Dropdown
-                style={[styles.dropdownContainer, { borderColor: colors.border }]}
-                activeColor={isDarkMode ? colors.neutral700 : colors.neutral100}
+                style={[
+                  styles.dropdownContainer,
+                  { borderColor: colors.border },
+                ]}
+                activeColor={isDarkMode ? colors.neutral300 : colors.neutral100}
                 selectedTextStyle={{ color: colors.text }}
                 itemTextStyle={{ color: colors.text }}
-                containerStyle={{ backgroundColor: colors.surface, borderColor: colors.border }}
+                containerStyle={{
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                }}
                 data={periodOptions}
                 labelField="label"
                 valueField="value"
                 value={budgetType}
-                onChange={(item) => setBudgetType(item.value as ExpenseLimitPeriod)}
+                onChange={(item) =>
+                  setBudgetType(item.value as ExpenseLimitPeriod)
+                }
               />
             </View>
 
             <View style={styles.inputContainer}>
-              <Typo color={colors.textLight} size={14}>Số tiền tối đa</Typo>
+              <Typo color={colors.textLight} size={14}>
+                Số tiền tối đa
+              </Typo>
               <Input
                 keyboardType="numeric"
                 placeholder="Nhập số tiền..."
                 value={budgetAmount}
-                onChangeText={(value) => setBudgetAmount(value.replace(/[^0-9]/g, ""))}
+                onChangeText={(value) =>
+                  setBudgetAmount(value.replace(/[^0-9]/g, ""))
+                }
               />
             </View>
 
             <View style={styles.modalActions}>
               <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: isDarkMode ? colors.neutral700 : colors.neutral200 }]}
+                style={[
+                  styles.modalButton,
+                  {
+                    backgroundColor: isDarkMode
+                      ? colors.neutral700
+                      : colors.neutral200,
+                  },
+                ]}
                 onPress={() => setShowAddModal(false)}
               >
-                <Typo size={14} color={colors.text}>Hủy</Typo>
+                <Typo size={14} color={colors.text}>
+                  Hủy
+                </Typo>
               </TouchableOpacity>
 
-              <TouchableOpacity style={[styles.modalButton, { backgroundColor: colors.primary }]} onPress={onAddBudget}>
-                <Typo size={14} color={colors.black} fontWeight={"700"}>Lưu</Typo>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  { backgroundColor: colors.primary },
+                ]}
+                onPress={onAddBudget}
+              >
+                <Typo size={14} color={colors.black} fontWeight={"700"}>
+                  Lưu
+                </Typo>
               </TouchableOpacity>
             </View>
           </View>
@@ -255,7 +320,11 @@ export default ExpenseLimitWarningModal;
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: spacingX._20 },
-  form: { gap: spacingY._20, paddingVertical: spacingY._15, paddingBottom: spacingY._40 },
+  form: {
+    gap: spacingY._20,
+    paddingVertical: spacingY._15,
+    paddingBottom: spacingY._40,
+  },
   inputContainer: { gap: spacingY._10 },
   warningList: { gap: spacingY._12 },
   warningItem: {
@@ -267,9 +336,21 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._12,
     borderWidth: 1,
   },
-  deleteIcon: { height: verticalScale(32), width: verticalScale(32), borderRadius: radius._10, backgroundColor: "#ef4444", alignItems: "center", justifyContent: "center" },
-  emptyBox: { borderStyle: "dashed", borderWidth: 1, borderRadius: radius._12, paddingVertical: spacingY._25, alignItems: "center" },
-
+  deleteIcon: {
+    height: verticalScale(32),
+    width: verticalScale(32),
+    borderRadius: radius._10,
+    backgroundColor: "#ef4444",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyBox: {
+    borderStyle: "dashed",
+    borderWidth: 1,
+    borderRadius: radius._12,
+    paddingVertical: spacingY._25,
+    alignItems: "center",
+  },
 
   footer: {
     flexDirection: "row",
@@ -278,12 +359,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacingX._20,
     paddingTop: spacingY._15,
     paddingBottom: spacingY._20,
-    borderTopWidth: 1
+    borderTopWidth: 1,
   },
 
-  dropdownContainer: { height: verticalScale(54), borderWidth: 1, paddingHorizontal: spacingX._15, borderRadius: radius._15 },
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", paddingHorizontal: spacingX._20 },
-  addModalCard: { borderRadius: radius._20, padding: spacingX._20, gap: spacingY._20, borderWidth: 1 },
-  modalActions: { flexDirection: "row", gap: spacingX._10, justifyContent: "flex-end", marginTop: 5 },
-  modalButton: { minWidth: verticalScale(80), alignItems: "center", justifyContent: "center", paddingVertical: spacingY._12, borderRadius: radius._12 },
+  dropdownContainer: {
+    height: verticalScale(54),
+    borderWidth: 1,
+    paddingHorizontal: spacingX._15,
+    borderRadius: radius._15,
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    paddingHorizontal: spacingX._20,
+  },
+  addModalCard: {
+    borderRadius: radius._20,
+    padding: spacingX._20,
+    gap: spacingY._20,
+    borderWidth: 1,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: spacingX._10,
+    justifyContent: "flex-end",
+    marginTop: 5,
+  },
+  modalButton: {
+    minWidth: verticalScale(80),
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacingY._12,
+    borderRadius: radius._12,
+  },
 });

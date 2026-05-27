@@ -41,6 +41,7 @@ const MONTHS_SHORT = [
   "Dec",
 ];
 
+// Nhãn tiếng Việt dùng khi hiển thị thống kê chi tiêu theo danh mục.
 const CATEGORY_LABELS_VI: Record<string, string> = {
   groceries: "Mua sắm",
   rent: "Nhà ở",
@@ -56,6 +57,7 @@ const CATEGORY_LABELS_VI: Record<string, string> = {
   others: "Khác",
 };
 
+// Màu đại diện cho từng danh mục trên màn hình phân tích tài chính.
 const CATEGORY_COLORS: Record<string, string> = {
   groceries: "#4B5563",
   rent: "#075985",
@@ -71,12 +73,14 @@ const CATEGORY_COLORS: Record<string, string> = {
   others: "#525252",
 };
 
+// Tạo khóa tháng-năm ngắn gọn để gom nhóm dữ liệu biểu đồ.
 const getMonthYearKey = (date: Date) => {
   const monthName = MONTHS_SHORT[date.getMonth()];
   const shortYear = date.getFullYear().toString().slice(-2);
   return `${monthName} ${shortYear}`;
 };
 
+// Chuẩn hóa ngày giao dịch vì dữ liệu có thể là Date, Firestore Timestamp hoặc string.
 const getTransactionDate = (value: TransactionType["date"]): Date | null => {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -87,6 +91,7 @@ const getTransactionDate = (value: TransactionType["date"]): Date | null => {
   return parsed;
 };
 
+// Tính khoảng thời gian cần kiểm tra theo hạn mức ngày, tuần hoặc tháng.
 const getPeriodRange = (date: Date, period: ExpenseLimitPeriod) => {
   const start = new Date(date);
   const end = new Date(date);
@@ -135,10 +140,12 @@ export const getExceededExpenseLimits = async (
   transactionIdToIgnore?: string,
 ): Promise<ResponseType> => {
   try {
+    // Bỏ qua kiểm tra hạn mức khi thông tin giao dịch chi chưa hợp lệ.
     if (!walletId || !expenseAmount || expenseAmount <= 0) {
       return { success: true, data: [] };
     }
 
+    // Lấy các hạn mức chi tiêu đã thiết lập cho ví được chọn.
     const budgetQuery = query(
       collection(firestore, "budget"),
       where("walletId", "==", walletId),
@@ -146,6 +153,7 @@ export const getExceededExpenseLimits = async (
     const budgetSnapshot = await getDocs(budgetQuery);
     const budgetByType: Partial<Record<ExpenseLimitPeriod, BudgetType>> = {};
 
+    // Chỉ giữ các hạn mức hợp lệ theo ngày, tuần hoặc tháng.
     budgetSnapshot.docs.forEach((item) => {
       const budget = { id: item.id, ...item.data() } as BudgetType;
       if (!budget?.type || !["day", "week", "month"].includes(budget.type)) {
@@ -175,6 +183,7 @@ export const getExceededExpenseLimits = async (
       };
     }
 
+    // Lấy các giao dịch chi hiện có của ví để tính tổng đã chi trong kỳ.
     const transactionsQuery = query(
       collection(firestore, "transactions"),
       where("walletId", "==", walletId),
@@ -188,10 +197,12 @@ export const getExceededExpenseLimits = async (
     const exceededItems: ExpenseLimitExceededItem[] = [];
     const nearLimitItems: ExpenseLimitExceededItem[] = [];
 
+    // So sánh tổng đã chi sau giao dịch mới với từng hạn mức để tạo cảnh báo.
     budgetItems.forEach((budgetItem) => {
       const { start, end } = getPeriodRange(date, budgetItem.type);
 
       const currentSpent = expenseTransactions.reduce((total, transaction) => {
+        // Khi sửa giao dịch, bỏ qua giao dịch cũ để không tính trùng số tiền.
         if (transactionIdToIgnore && transaction.id === transactionIdToIgnore) {
           return total;
         }
@@ -243,17 +254,18 @@ export const createOrUpdateTransaction = async (
   try {
     const { id, type, walletId, amount, image } = transactionData;
 
+    // Kiểm tra dữ liệu bắt buộc trước khi ghi Firestore và cập nhật ví.
     if (!amount || amount <= 0 || !walletId || !type) {
       return { success: false, msg: "Dữ liệu giao dịch không hợp lệ!" };
     }
 
     if (id) {
+      // Trường hợp cập nhật: lấy giao dịch cũ để hoàn tác ảnh hưởng lên ví nếu cần.
       const oldTransactionSnapshot = await getDoc(
         doc(firestore, "transactions", id),
       );
 
       const oldTransaction = oldTransactionSnapshot.data() as TransactionType;
-      const old = oldTransactionSnapshot.data() as TransactionType;
 
       const shouldRevertOriginal =
         oldTransaction.type !== type ||
@@ -261,6 +273,7 @@ export const createOrUpdateTransaction = async (
         oldTransaction.walletId !== walletId;
 
       if (shouldRevertOriginal) {
+        // Nếu đổi ví, đổi loại hoặc đổi số tiền, cần cập nhật lại cả ví cũ và ví mới.
         let res = await revertAndUpdateWallets(
           oldTransaction,
           Number(amount),
@@ -271,7 +284,7 @@ export const createOrUpdateTransaction = async (
         if (!res.success) return res;
       }
     } else {
-      // update wallet for new transaction
+      // Trường hợp thêm mới: áp dụng ngay ảnh hưởng của giao dịch vào ví.
       let res = await updateWalletForNewTransaction(
         walletId!,
         Number(amount!),
@@ -282,6 +295,7 @@ export const createOrUpdateTransaction = async (
     }
 
     if (image) {
+      // Upload ảnh hóa đơn lên Cloudinary trước, sau đó lưu URL ảnh vào giao dịch.
       const imageUploadRes = await uploadFileToCloudinary(
         image,
         "transactions",
@@ -301,6 +315,7 @@ export const createOrUpdateTransaction = async (
       ? doc(firestore, "transactions", id)
       : doc(collection(firestore, "transactions"));
 
+    // setDoc với merge giúp thêm mới hoặc cập nhật một phần dữ liệu giao dịch.
     await setDoc(transactionRef, transactionData, { merge: true });
 
     return {
@@ -319,6 +334,7 @@ const updateWalletForNewTransaction = async (
   type: string,
 ) => {
   try {
+    // Lấy ví liên kết để kiểm tra số dư và cập nhật tổng thu/tổng chi.
     const walletRef = doc(firestore, "wallets", walletId);
     const walletSnapshot = await getDoc(walletRef);
     if (!walletSnapshot.exists()) {
@@ -328,6 +344,7 @@ const updateWalletForNewTransaction = async (
 
     const walletData = walletSnapshot.data() as WalletType;
 
+    // Không cho tạo giao dịch chi nếu số dư ví không đủ.
     if (type === "expense" && walletData.amount! - amount < 0) {
       return {
         success: false,
@@ -335,6 +352,7 @@ const updateWalletForNewTransaction = async (
       };
     }
 
+    // Giao dịch thu làm tăng amount/totalIncome, giao dịch chi làm giảm amount và tăng totalExpenses.
     const updateType = type == "income" ? "totalIncome" : "totalExpenses";
     const updatedWalletAmount =
       type == "income"
@@ -365,6 +383,7 @@ const revertAndUpdateWallets = async (
   newWalletId: string,
 ) => {
   try {
+    // Lấy ví cũ và ví mới để hoàn tác giao dịch cũ rồi áp dụng giao dịch mới.
     const originalWalletSnapshot = await getDoc(
       doc(firestore, "wallets", oldTransaction.walletId),
     );
@@ -376,6 +395,7 @@ const revertAndUpdateWallets = async (
     );
     let newWallet = newWalletSnapshot.data() as WalletType;
 
+    // Xác định trường tổng thu/tổng chi cần hoàn tác dựa trên loại giao dịch cũ.
     const revertType =
       oldTransaction.type == "income" ? "totalIncome" : "totalExpenses";
 
@@ -386,14 +406,13 @@ const revertAndUpdateWallets = async (
 
     const revertedWalletAmount =
       Number(originalWallet.amount) + revertIncomeExpense;
-    // wallet amount, after the transaction is removed
+    // Số dư ví sau khi loại bỏ ảnh hưởng của giao dịch cũ.
 
     const revertedIncomeExpenseAmount =
       Number(originalWallet[revertType]) - Number(oldTransaction.amount);
 
     if (newTransactionType == "expense") {
-      // if user tries to convert income to expense on the same ge wallet
-      // or if the user tries to increase the expense amount and donn't have enough
+      // Kiểm tra số dư nếu giao dịch mới là chi tiêu.
       if (
         oldTransaction.walletId == newWalletId &&
         revertedWalletAmount < newTransactionAmount
@@ -404,7 +423,7 @@ const revertAndUpdateWallets = async (
         };
       }
 
-      // if user tries to add expense from a new wallet but the wallet donn't have anough balance
+      // Nếu chuyển sang ví mới, ví mới cũng phải đủ số dư để chi.
       if (newWallet.amount! < newTransactionAmount) {
         return {
           success: false,
@@ -413,19 +432,18 @@ const revertAndUpdateWallets = async (
       }
     }
 
+    // Cập nhật ví cũ sau khi hoàn tác giao dịch cũ.
     await createOrUpdateWallet({
       id: oldTransaction.walletId,
       amount: revertedWalletAmount,
       [revertType]: revertedIncomeExpenseAmount,
     });
 
-    // revert completed
-    /////////////////////////////////////////////////////////////////////////
-
-    // refetch the newwallet because we may have just updated it
+    // Lấy lại ví mới vì ví mới có thể trùng ví cũ và vừa được cập nhật.
     newWalletSnapshot = await getDoc(doc(firestore, "wallets", newWalletId));
     newWallet = newWalletSnapshot.data() as WalletType;
 
+    // Áp dụng giao dịch mới lên ví mới.
     const updateType =
       newTransactionType == "income" ? "totalIncome" : "totalExpenses";
 
@@ -458,6 +476,7 @@ export const deleteTransaction = async (
   walletId: string,
 ) => {
   try {
+    // Lấy giao dịch cần xóa để biết phải hoàn tác số dư ví như thế nào.
     const transactionRef = doc(firestore, "transactions", transactionId);
     const transactionSnapshot = await getDoc(transactionRef);
 
@@ -470,11 +489,11 @@ export const deleteTransaction = async (
     const transactionType = transactionData?.type;
     const transactionAmount = transactionData?.amount;
 
-    // fetch wallet to update amount, totalIncome or totalExpenses
+    // Lấy ví liên kết để cập nhật amount, totalIncome hoặc totalExpenses.
     const walletSnapshot = await getDoc(doc(firestore, "wallets", walletId));
     const walletData = walletSnapshot.data() as WalletType;
 
-    // check fields to be updated based on transaction type
+    // Xác định trường cần giảm dựa trên loại giao dịch.
     const updateType =
       transactionType == "income" ? "totalIncome" : "totalExpenses";
 
@@ -484,11 +503,12 @@ export const deleteTransaction = async (
 
     const newIncomeExpenseAmount = walletData[updateType]! - transactionAmount;
 
-    // if its income and the wallet amount can go below zero
+    // Không cho xóa giao dịch thu nếu việc xóa làm số dư ví âm.
     if (transactionType == "income" && newWalletAmount < 0) {
       return { success: false, msg: "You cannot delete this transaction" };
     }
 
+    // Cập nhật ví trước, sau đó mới xóa document giao dịch.
     await createOrUpdateWallet({
       id: walletId,
       amount: newWalletAmount,
@@ -511,6 +531,7 @@ export const fetchWeeklyStats = async (uid: string): Promise<ResponseType> => {
     const sevenDatesAgo = new Date(today);
     sevenDatesAgo.setDate(today.getDate() - 7);
 
+    // Truy vấn giao dịch trong 7 ngày gần nhất để vẽ thống kê tuần.
     const transactionsQuery = query(
       collection(db, "transactions"),
       where("date", ">=", Timestamp.fromDate(sevenDatesAgo)),
@@ -523,6 +544,7 @@ export const fetchWeeklyStats = async (uid: string): Promise<ResponseType> => {
     const weeklyData = getLast7Days();
     const transactions: TransactionType[] = [];
 
+    // Gom giao dịch theo ngày và cộng riêng thu nhập/chi tiêu.
     querySnapshot.forEach((doc) => {
       const transaction = doc.data() as TransactionType;
       transaction.id = doc.id;
@@ -575,6 +597,7 @@ export const fetchMonthlyStats = async (uid: string): Promise<ResponseType> => {
       1,
     );
 
+    // Truy vấn giao dịch trong 12 tháng gần nhất để vẽ thống kê tháng.
     const transactionsQuery = query(
       collection(db, "transactions"),
       where("date", ">=", Timestamp.fromDate(twelveMonthsAgo)),
@@ -586,7 +609,7 @@ export const fetchMonthlyStats = async (uid: string): Promise<ResponseType> => {
     const querySnapshot = await getDocs(transactionsQuery);
 
     const monthlyData: any[] = [];
-    // 🛠️ FIX Ở ĐÂY: Đảo vòng lặp để Tháng hiện tại (mới nhất) nằm ngoài cùng bên trái
+    // Đưa tháng hiện tại lên đầu danh sách để biểu đồ hiển thị dữ liệu mới nhất trước.
     for (let i = 0; i <= 11; i++) {
       const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
       monthlyData.push({
@@ -599,6 +622,7 @@ export const fetchMonthlyStats = async (uid: string): Promise<ResponseType> => {
 
     const transactions: TransactionType[] = [];
 
+    // Gom dữ liệu theo tháng và cộng riêng thu nhập/chi tiêu.
     querySnapshot.forEach((doc) => {
       const transaction = doc.data() as TransactionType;
       transaction.id = doc.id;
@@ -649,7 +673,7 @@ export const fetchYearlyStats = async (uid: string): Promise<ResponseType> => {
   try {
     const db = firestore;
 
-    // Define query to fetch transactions in the last 12 months
+    // Lấy toàn bộ giao dịch của người dùng để gom nhóm theo năm.
     const transactionsQuery = query(
       collection(db, "transactions"),
       orderBy("date", "desc"),
@@ -669,10 +693,10 @@ export const fetchYearlyStats = async (uid: string): Promise<ResponseType> => {
 
     const yearlyData = getYearsRange(firstYear, currentYear);
 
-    // Process transactions to calculate income and expense for each month
+    // Gom giao dịch theo năm và cộng riêng thu nhập/chi tiêu.
     querySnapshot.forEach((doc) => {
       const transaction = doc.data() as TransactionType;
-      transaction.id = doc.id; // Include document ID in transaction data
+      transaction.id = doc.id;
       transactions.push(transaction);
 
       const transactionYear = (transaction.date as Timestamp)
@@ -692,18 +716,18 @@ export const fetchYearlyStats = async (uid: string): Promise<ResponseType> => {
       }
     });
 
-    // Reformat monthlyData for the bar chart with income and expense entries for each month
+    // Chuyển dữ liệu năm sang format cột thu/chi cho biểu đồ.
     const stats = yearlyData.flatMap((year: any) => [
       {
         value: year.income,
         label: year.year,
         spacing: scale(4),
         labelWidth: scale(35),
-        frontColor: colors.primary, // Income bar color
+        frontColor: colors.primary,
       },
       {
         value: year.expense,
-        frontColor: colors.rose, // Expense bar color
+        frontColor: colors.rose,
       },
     ]);
 
@@ -711,7 +735,7 @@ export const fetchYearlyStats = async (uid: string): Promise<ResponseType> => {
       success: true,
       data: {
         stats,
-        transactions, // Include all transaction details
+        transactions,
       },
     };
   } catch (error) {
@@ -727,6 +751,7 @@ const getYearMonthKey = (date: Date) => {
   return `${date.getFullYear()}-${date.getMonth()}`;
 };
 
+// Trả về khoảng thời gian [đầu tháng, đầu tháng sau) để lọc giao dịch theo tháng.
 const getMonthWindow = (year: number, month: number) => {
   return {
     start: new Date(year, month, 1),
@@ -734,6 +759,7 @@ const getMonthWindow = (year: number, month: number) => {
   };
 };
 
+// Tính phần trăm thay đổi, xử lý riêng trường hợp kỳ trước bằng 0.
 const percentChange = (current: number, previous: number) => {
   if (previous > 0) {
     return ((current - previous) / previous) * 100;
@@ -742,6 +768,7 @@ const percentChange = (current: number, previous: number) => {
   return 0;
 };
 
+// Tính tổng hạn mức tháng của tất cả ví thuộc người dùng hiện tại.
 const getMonthlyBudgetLimitByUser = async (uid: string): Promise<number> => {
   const walletsQuery = query(
     collection(firestore, "wallets"),
@@ -779,6 +806,7 @@ export const fetchMonthlyInsightStats = async (
       return { success: false, msg: "Missing user id" };
     }
 
+    // Lấy dữ liệu từ đầu 3 tháng trước đến hết tháng hiện tại để có cơ sở so sánh.
     const now = new Date();
     const { start: currentMonthStart, end: nextMonthStart } = getMonthWindow(
       now.getFullYear(),
@@ -790,6 +818,7 @@ export const fetchMonthlyInsightStats = async (
     );
     const lookBackStart = new Date(now.getFullYear(), now.getMonth() - 3, 1);
 
+    // Truy vấn giao dịch phục vụ màn hình AI Summary.
     const transactionsQuery = query(
       collection(firestore, "transactions"),
       where("uid", "==", uid),
@@ -800,6 +829,7 @@ export const fetchMonthlyInsightStats = async (
 
     const querySnapshot = await getDocs(transactionsQuery);
 
+    // Các biến tổng hợp cho tháng hiện tại và tháng trước.
     let totalExpense = 0;
     let totalIncome = 0;
     let previousExpense = 0;
@@ -810,6 +840,7 @@ export const fetchMonthlyInsightStats = async (
     const previousExpenseByMonth: Record<string, number> = {};
     const previousCategoryByMonth: Record<string, Record<string, number>> = {};
 
+    // Duyệt từng giao dịch để tính tổng thu, tổng chi, số lượng và chi theo danh mục.
     querySnapshot.forEach((item) => {
       const transaction = { id: item.id, ...item.data() } as TransactionType;
       const transactionDate = getTransactionDate(transaction.date);
@@ -868,6 +899,7 @@ export const fetchMonthlyInsightStats = async (
       }
     });
 
+    // Sắp xếp danh mục theo số tiền chi giảm dần để tìm danh mục chi nhiều nhất.
     const categories = Object.entries(currentExpenseByCategory)
       .sort((a, b) => b[1] - a[1])
       .map(([key, amount]) => ({
@@ -887,6 +919,7 @@ export const fetchMonthlyInsightStats = async (
       color: CATEGORY_COLORS.others,
     };
 
+    // Tính trung bình chi tiêu 3 tháng trước của danh mục top hiện tại.
     const previousThreeMonthKeys = [1, 2, 3].map((offset) => {
       const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
       return getYearMonthKey(date);
@@ -899,6 +932,7 @@ export const fetchMonthlyInsightStats = async (
         return sum + categoryAmount;
       }, 0) / previousThreeMonthKeys.length;
 
+    // Lấy hạn mức tháng để tính phần trăm sử dụng ngân sách.
     const monthlyBudgetLimit = await getMonthlyBudgetLimitByUser(uid);
     const hasMonthlyBudget = monthlyBudgetLimit > 0;
     const hasPreviousExpenseData = previousExpense > 0;
@@ -915,6 +949,7 @@ export const fetchMonthlyInsightStats = async (
         ? Math.min(100, Math.round((totalExpense / budgetLimit) * 100))
         : 0;
 
+    // Payload gồm cả dữ liệu hiển thị và dữ liệu rút gọn gửi sang AI.
     const insightStats: MonthlyInsightStatsType = {
       monthLabel: new Intl.DateTimeFormat("vi-VN", {
         month: "long",
