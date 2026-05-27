@@ -7,15 +7,19 @@ import Typo from "@/components/Typo";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { scanInvoiceWithAI } from "@/services/aiService";
 import { ScanResult } from "@/types";
+import { setPendingScanResult } from "@/utils/scanInvoiceResultStore";
 import { scale, verticalScale } from "@/utils/styling";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -27,15 +31,71 @@ type ScanMode = "capture" | "upload";
 
 const ACCENT = "#00E5FF";
 
+/**
+ * Modal quét hóa đơn (AI Scan Invoice)
+ *
+ * Vai trò:
+ * - Chụp ảnh hoặc tải ảnh hóa đơn (expo-image-picker)
+ * - Gọi AI để trích xuất dữ liệu (services/aiService.ts → `scanInvoiceWithAI`)
+ * - Hiển thị kết quả và cho phép người dùng chỉnh sửa trước khi xác nhận
+ * - Trả kết quả về màn tạo giao dịch thông qua store tạm:
+ *   - set: `utils/scanInvoiceResultStore.ts:setPendingScanResult`
+ *   - get: `utils/scanInvoiceResultStore.ts:consumePendingScanResult` (ở transaction modal)
+ *
+ * API ngoài được gọi gián tiếp:
+ * - OpenAI Responses API hoặc Gemini GenerateContent API (tùy key cấu hình)
+ */
 const ScanInvoiceModal = () => {
   const router = useRouter();
   const [mode, setMode] = useState<ScanMode>("capture");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const scanningRef = useRef(false);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [editing, setEditing] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // Chụp ảnh bằng camera
+  const getEndOfToday = (): Date => {
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return today;
+  };
+
+  const clampToToday = (dateValue: Date): Date => {
+    const maxDate = getEndOfToday();
+    return dateValue.getTime() > maxDate.getTime() ? maxDate : dateValue;
+  };
+
+  const formatDateDDMMYYYY = (dateValue: Date) => {
+    const day = String(dateValue.getDate()).padStart(2, "0");
+    const month = String(dateValue.getMonth() + 1).padStart(2, "0");
+    const year = String(dateValue.getFullYear());
+    return `${day}/${month}/${year}`;
+  };
+
+  const parseDDMMYYYY = (dateStr: string): Date => {
+    if (!dateStr) return new Date();
+    try {
+      const [datePart] = dateStr.split(" ");
+      const [day, month, year] = datePart.split("/");
+      const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+      return Number.isFinite(parsed.getTime()) ? parsed : new Date();
+    } catch {
+      return new Date();
+    }
+  };
+
+  const onDateChange = (_event: any, selectedDate: any) => {
+    if (!result) return;
+    const next = clampToToday(selectedDate || parseDDMMYYYY(result.date));
+    setResult({ ...result, date: formatDateDDMMYYYY(next) });
+    setShowDatePicker(Platform.OS === "ios");
+  };
+
+  /**
+   * Mở camera để chụp ảnh hóa đơn.
+   * Nếu người dùng từ chối quyền camera thì dừng luồng và hiện thông báo.
+   */
   const handleCapture = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
@@ -43,10 +103,8 @@ const ScanInvoiceModal = () => {
       return;
     }
     const res = await ImagePicker.launchCameraAsync({
-      quality: 0.5,
+      quality: 1,
       allowsEditing: false,
-      maxWidth: 1024,
-      maxHeight: 1024,
     } as any);
     if (!res.canceled && res.assets?.length > 0) {
       setImageUri(res.assets[0].uri);
@@ -54,14 +112,14 @@ const ScanInvoiceModal = () => {
     }
   };
 
-  // Upload từ thư viện ảnh
+  /**
+   * Mở thư viện ảnh để chọn ảnh hóa đơn có sẵn trên máy.
+   */
   const handleUpload = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
-      quality: 0.5,
+      quality: 1,
       allowsEditing: false,
       mediaTypes: ["images"],
-      maxWidth: 1024,
-      maxHeight: 1024,
     } as any);
     if (!res.canceled && res.assets?.length > 0) {
       setImageUri(res.assets[0].uri);
@@ -69,15 +127,24 @@ const ScanInvoiceModal = () => {
     }
   };
 
-  // Gọi AI scan
+  /**
+   * Gọi service AI để quét hóa đơn từ `imageUri`.
+   *
+   * Bảo vệ luồng:
+   * - Không cho scan nếu chưa có ảnh
+   * - Dùng `scanningRef` để chặn bấm nhiều lần liên tiếp khi request đang chạy
+   */
   const handleScan = async () => {
     if (!imageUri) {
       Alert.alert("Chưa có ảnh", "Vui lòng chụp hoặc tải ảnh hóa đơn lên");
       return;
     }
+    if (scanningRef.current) return;
+    scanningRef.current = true;
     setScanning(true);
     setResult(null);
     const res = await scanInvoiceWithAI(imageUri);
+    scanningRef.current = false;
     setScanning(false);
     if (res.success && res.data) {
       setResult(res.data);
@@ -86,19 +153,14 @@ const ScanInvoiceModal = () => {
     }
   };
 
-  // Xác nhận → chuyển sang transactionModal với dữ liệu đã scan
+  /**
+   * Xác nhận kết quả scan.
+   * Kết quả sẽ được lưu vào store tạm và màn hiện tại đóng lại để quay về transaction modal.
+   */
   const handleConfirm = () => {
     if (!result) return;
-    router.replace({
-      pathname: "/(modals)/transactionModal",
-      params: {
-        scanned: "true",
-        amount: result.totalAmount.toString(),
-        date: result.date,
-        description: result.description,
-        category: result.category,
-      },
-    });
+    setPendingScanResult(result);
+    router.back();
   };
 
   const formatAmount = (amount: number) => amount.toLocaleString("vi-VN") + "đ";
@@ -280,18 +342,43 @@ const ScanInvoiceModal = () => {
 
                 {/* Ngày */}
                 {editing ? (
-                  <EditableField
-                    icon={
+                  <View style={editStyles.container}>
+                    <View style={editStyles.iconBox}>
                       <Icons.CalendarBlank
                         size={verticalScale(18)}
                         color={ACCENT}
                         weight="fill"
                       />
-                    }
-                    label="NGÀY THANH TOÁN"
-                    value={result.date}
-                    onChangeText={(v) => setResult({ ...result, date: v })}
-                  />
+                    </View>
+                    <View style={editStyles.textBox}>
+                      <Typo size={12} color={colors.neutral400}>
+                        NGÀY THANH TOÁN
+                      </Typo>
+                      <Pressable
+                        onPress={() => setShowDatePicker(true)}
+                        style={editStyles.input}
+                      >
+                        <Typo
+                          size={14}
+                          fontWeight="500"
+                          color={colors.text}
+                        >
+                          {result.date}
+                        </Typo>
+                      </Pressable>
+                      {showDatePicker && (
+                        <DateTimePicker
+                          value={parseDDMMYYYY(result.date)}
+                          mode="date"
+                          display={
+                            Platform.OS === "ios" ? "spinner" : "default"
+                          }
+                          maximumDate={getEndOfToday()}
+                          onChange={onDateChange}
+                        />
+                      )}
+                    </View>
+                  </View>
                 ) : (
                   <ScanResultItem
                     icon={
@@ -373,7 +460,10 @@ const ScanInvoiceModal = () => {
         {result && (
           <View style={styles.footer}>
             <Button
-              onPress={() => setEditing(!editing)}
+              onPress={() => {
+                setShowDatePicker(false);
+                setEditing(!editing);
+              }}
               style={{
                 ...styles.editBtn,
                 ...(editing ? { borderColor: ACCENT, borderWidth: 1 } : {}),

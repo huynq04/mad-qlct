@@ -16,6 +16,11 @@ const useFetchData = <T>(
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Hook subscribe dữ liệu realtime từ Firestore.
+    //
+    // Lưu ý:
+    // - Trong lúc auth/constraints chưa sẵn sàng (ví dụ `uid` còn undefined), việc tạo query có thể lỗi.
+    // - Hook cố tình "nuốt" lỗi ở bước tạo query để tránh crash UI và đợi render sau khi constraints hợp lệ.
     // 1. Chặn nếu không có tên collection (tránh lỗi thừa)
     if (!collectionName) {
       setLoading(false);
@@ -68,4 +73,19 @@ const useFetchData = <T>(
   return { data, loading, error };
 };
 
+/**
+ * Hook đọc dữ liệu realtime từ Firestore theo collection + constraints.
+ *
+ * Input:
+ * - `collectionName`: tên collection (ví dụ: `"wallets"`, `"transactions"`)
+ * - `constraints`: mảng `QueryConstraint` (ví dụ: `where(...)`, `orderBy(...)`)
+ *
+ * Output:
+ * - `data`: danh sách document (mỗi item được gắn thêm `id`)
+ * - `loading`: trạng thái tải
+ * - `error`: message lỗi (nếu có)
+ *
+ * Lưu ý:
+ * - Dùng `onSnapshot` nên UI sẽ cập nhật ngay khi Firestore thay đổi.
+ */
 export default useFetchData;

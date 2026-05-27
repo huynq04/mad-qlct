@@ -11,6 +11,7 @@ import { useTheme } from "@/contexts/themeContext";
 import { createOrUpdateWallet, deleteWallet } from "@/services/walletService";
 import { WalletType } from "@/types";
 import { scale, verticalScale } from "@/utils/styling";
+import { auth } from "@/config/firebase";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
@@ -66,11 +67,16 @@ const WalletModal = () => {
             Alert.alert(("Vui lòng nhập tên ví"));
             return;
         }
+        const effectiveUid = user?.uid ?? auth.currentUser?.uid;
+        if (!effectiveUid) {
+            Alert.alert(("Tài khoản"), ("Bạn cần đăng nhập lại để tạo/cập nhật ví."));
+            return;
+        }
 
         const data: WalletType = {
             name,
             image,
-            uid: user?.uid
+            uid: effectiveUid
         };
         if (oldWallet?.id) data.id = oldWallet?.id;
         setLoading(true);

@@ -19,11 +19,13 @@ import {
 } from "@/services/transactionService";
 import { TransactionType, WalletType } from "@/types";
 import { scale, verticalScale } from "@/utils/styling";
+import { consumePendingScanResult } from "@/utils/scanInvoiceResultStore";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { orderBy, where } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Platform,
@@ -35,6 +37,16 @@ import {
 } from "react-native";
 import { Dropdown } from "react-native-element-dropdown";
 
+/**
+ * Modal tạo/cập nhật giao dịch
+ *
+ * Phần liên quan trực tiếp đến tính năng bạn phụ trách (AI Scan Invoice):
+ * - Mở modal quét hóa đơn: `router.push("/(modals)/scanInvoiceModal")`
+ * - Khi quay lại màn này, lấy kết quả scan 1 lần bằng `consumePendingScanResult()` và auto-fill form
+ * - Chuẩn hóa dữ liệu AI:
+ *   - map category tiếng Việt (AI trả về) → category code nội bộ của app
+ *   - parse ngày dạng `DD/MM/YYYY` → `Date`
+ */
 const TransactionModal = () => {
   const { user } = useAuth();
   const { colors, isDarkMode } = useTheme();
@@ -73,6 +85,10 @@ const TransactionModal = () => {
 
   const oldTransaction: paramType = useLocalSearchParams();
 
+  /**
+   * Map category AI trả về (tiếng Việt) sang category code nội bộ của app.
+   * Đây là bước bắt buộc để dữ liệu scan tương thích với dropdown/category logic hiện tại.
+   */
   const mapAICategory = (aiCategory: string): string => {
     const map: Record<string, string> = {
       "Ăn uống": "dining",
@@ -172,6 +188,22 @@ const TransactionModal = () => {
       }));
     }
   }, [oldTransaction?.id, oldTransaction?.scanned]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // Khi quay lại từ scan modal, lấy kết quả scan 1 lần và tự điền form giao dịch.
+      const scanResult = consumePendingScanResult();
+      if (!scanResult) return;
+
+      setTransaction((prev) => ({
+        ...prev,
+        amount: Number(scanResult.totalAmount) || 0,
+        description: scanResult.description || "",
+        category: mapAICategory(scanResult.category || ""),
+        date: parseScannedDate(scanResult.date || ""),
+      }));
+    }, []),
+  );
 
   const onSubmit = async () => {
     const { type, amount, description, category, date, walletId, image } =

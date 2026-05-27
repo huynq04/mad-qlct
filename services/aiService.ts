@@ -1,4 +1,4 @@
-import { GEMINI_API_KEY } from "@/constants";
+import { GEMINI_API_KEY, OPENAI_API_KEY } from "@/constants";
 import {
     AISummaryHighlight,
     AISummaryResult,
@@ -11,8 +11,41 @@ import axios from "axios";
 import { readAsStringAsync } from "expo-file-system/legacy";
 
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+const OPENAI_RESPONSES_API_URL = "https://api.openai.com/v1/responses";
+const OPENAI_SCAN_MODEL = "gpt-4.1-mini";
+const DEFAULT_HTTP_TIMEOUT_MS = 30000;
 
-const SCAN_PROMPT = `Extract from this receipt: totalAmount (number), date (DD/MM/YYYY), description (items bought, Vietnamese, max 5), category (one of: Ăn uống|Di chuyển|Mua sắm|Y tế|Giải trí|Giáo dục|Hóa đơn|Khác). Reply ONLY valid JSON, no markdown.`;
+/**
+ * Prompt dùng cho tính năng AI quét hóa đơn.
+ *
+ * Hợp đồng output (cực kỳ quan trọng):
+ * - Provider phải trả về DUY NHẤT một JSON object hợp lệ (không markdown, không giải thích),
+ *   đúng schema để UI auto-fill form giao dịch.
+ *
+ * Các field UI cần:
+ * - totalAmount (number)
+ * - date (DD/MM/YYYY)
+ * - description (string)
+ * - category (một trong các nhãn tiếng Việt đã quy định)
+ */
+const SCAN_PROMPT = `Bạn là hệ thống OCR/AI cho app quản lý chi tiêu. Hãy đọc ảnh hóa đơn và trích xuất dữ liệu.
+
+Chỉ trả về DUY NHẤT một JSON object hợp lệ (không markdown, không giải thích) theo đúng schema:
+{
+  "totalAmount": 0,
+  "date": "DD/MM/YYYY" ,
+  "description": "tối đa 5 món/sản phẩm, cách nhau bằng dấu phẩy, tiếng Việt có dấu",
+  "category": "Ăn uống|Di chuyển|Mua sắm|Y tế|Giải trí|Giáo dục|Hóa đơn|Khác"
+}
+
+Quy tắc:
+- totalAmount: chỉ số (không ký hiệu tiền tệ). Ưu tiên "Tổng cộng/Thành tiền/Grand total".
+- date: nếu không thấy thì dùng ngày hôm nay theo DD/MM/YYYY.
+- description: nếu không thấy chi tiết thì dùng tên cửa hàng + 1-2 keyword.
+- category: chọn 1 giá trị trong danh sách.
+
+Ví dụ output hợp lệ:
+{"totalAmount":120000,"date":"10/04/2026","description":"Trà sữa trân châu, Bánh flan","category":"Ăn uống"}`;
 
 const FINANCIAL_SUMMARY_PROMPT = `Bạn là chuyên gia tài chính cá nhân người Việt Nam.
 Hãy phân tích dữ liệu chi tiêu tháng và trả về JSON hợp lệ (không markdown) theo đúng schema:
@@ -41,6 +74,12 @@ const normalizeTone = (tone: unknown): "positive" | "warning" | "neutral" => {
   return "neutral";
 };
 
+/**
+ * Cố gắng sửa các lỗi JSON thường gặp từ output AI:
+ * - Có markdown fence ```json
+ * - Có dấu phẩy thừa trước `}` hoặc `]`
+ * - Thiếu dấu đóng object/array hoặc chưa đóng chuỗi
+ */
 const repairIncompleteJson = (text: string) => {
   let cleaned = text
     .replace(/```json|```/g, "")
@@ -99,6 +138,14 @@ const repairIncompleteJson = (text: string) => {
   return cleaned;
 };
 
+/**
+ * Parse JSON theo hướng "chịu lỗi".
+ *
+ * Chiến lược:
+ * - Thử parse nguyên văn sau khi bỏ markdown fence
+ * - Nếu fail, cắt phần từ `{` đầu tiên đến `}` cuối cùng
+ * - Nếu vẫn fail, gọi `repairIncompleteJson()` rồi parse lại
+ */
 const safeParseJSON = (text: string): any | null => {
   const cleanText = text.replace(/```json|```/g, "").trim();
   const parseCandidates: string[] = [];
@@ -129,6 +176,154 @@ const safeParseJSON = (text: string): any | null => {
   }
 
   return null;
+};
+
+/**
+ * Chuẩn hóa response text từ Gemini.
+ *
+ * Gemini có thể trả nội dung tách thành nhiều `parts`, helper này sẽ join lại thành một chuỗi text
+ * để parse JSON phía sau.
+ */
+const getGeminiTextFromResponse = (data: any): string => {
+  const parts = data?.candidates?.[0]?.content?.parts;
+  if (Array.isArray(parts)) {
+    const joined = parts
+      .map((part) => (typeof part?.text === "string" ? part.text : ""))
+      .join("\n")
+      .trim();
+    if (joined) return joined;
+  }
+
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  return typeof text === "string" ? text.trim() : "";
+};
+
+/**
+ * Trích text output từ OpenAI Responses API.
+ *
+ * OpenAI có thể trả:
+ * - `output_text` (đã join sẵn), hoặc
+ * - `output[]` (structured). Helper này sẽ quét và nối các đoạn `output_text`.
+ *
+ * Output trả về dự kiến sẽ là JSON text theo schema của `SCAN_PROMPT`.
+ */
+const getOpenAIOutputTextFromResponse = (data: any): string => {
+  if (typeof data?.output_text === "string" && data.output_text.trim()) {
+    return data.output_text.trim();
+  }
+
+  const output = data?.output;
+  if (!Array.isArray(output)) return "";
+
+  const chunks: string[] = [];
+  for (const item of output) {
+    const content = item?.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (part?.type === "output_text" && typeof part?.text === "string") {
+        chunks.push(part.text);
+      }
+    }
+  }
+
+  return chunks.join("\n").trim();
+};
+
+/**
+ * Quét hóa đơn bằng OpenAI (Responses API).
+ *
+ * API gọi ngoài:
+ * - Endpoint: `https://api.openai.com/v1/responses`
+ * - Model: `gpt-4.1-mini`
+ * - Input: prompt + ảnh (data URL base64)
+ *
+ * Output:
+ * - `ResponseType` với `data: ScanResult` nếu parse thành công
+ */
+const scanInvoiceWithOpenAI = async (imageUri: string): Promise<ResponseType> => {
+  try {
+    if (!OPENAI_API_KEY) {
+      return { success: false, msg: "Thiếu OPENAI_API_KEY. Vui lòng cấu hình lại." };
+    }
+
+    // Đọc ảnh local thành base64 để gửi theo dạng data URL cho OpenAI.
+    const base64Image = await readAsStringAsync(imageUri, {
+      encoding: "base64",
+    });
+    const mimeType = imageUri.toLowerCase().endsWith(".png")
+      ? "image/png"
+      : "image/jpeg";
+
+    const requestBody = {
+      model: OPENAI_SCAN_MODEL,
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: SCAN_PROMPT },
+            {
+              type: "input_image",
+              image_url: `data:${mimeType};base64,${base64Image}`,
+            },
+          ],
+        },
+      ],
+      max_output_tokens: 600,
+      store: false,
+    };
+
+    const response = await axios.post(OPENAI_RESPONSES_API_URL, requestBody, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      timeout: DEFAULT_HTTP_TIMEOUT_MS,
+    });
+
+    const text = getOpenAIOutputTextFromResponse(response.data);
+    console.log("OpenAI raw response:", text);
+
+    if (!text) {
+      return { success: false, msg: "AI không trả về kết quả. Thử lại." };
+    }
+
+    const parsed = safeParseJSON(text);
+    if (!parsed || typeof parsed !== "object") {
+      console.log("OpenAI JSON parse failed, raw text:", text);
+      return {
+        success: false,
+        msg: "Không đọc được kết quả từ AI. Vui lòng chụp ảnh rõ hơn.",
+      };
+    }
+
+    const parsedAny = parsed as any;
+    const result: ScanResult = {
+      totalAmount:
+        Number(String(parsedAny.totalAmount).replace(/[^0-9.]/g, "")) || 0,
+      date: parsedAny.date || new Date().toLocaleDateString("vi-VN"),
+      description: parsedAny.description || "",
+      category: parsedAny.category || "Khác",
+    };
+
+    return { success: true, data: result };
+  } catch (error: any) {
+    const errMsg =
+      error?.response?.data?.error?.message ||
+      error?.response?.data ||
+      error.message;
+    console.log("OpenAI scan error:", errMsg);
+
+    if (error?.response?.status === 401) {
+      return { success: false, msg: "OPENAI_API_KEY không hợp lệ." };
+    }
+    if (error?.response?.status === 429) {
+      return { success: false, msg: "OpenAI đang bị rate-limit. Thử lại sau." };
+    }
+    return {
+      success: false,
+      msg: `Lỗi: ${errMsg || "Không thể phân tích hóa đơn"}`,
+    };
+  }
 };
 
 const hasPreviousComparisonText = (text: string) => {
@@ -257,6 +452,31 @@ export const scanInvoiceWithAI = async (
   imageUri: string,
 ): Promise<ResponseType> => {
   try {
+    /**
+     * Quét hóa đơn bằng AI theo cơ chế ưu tiên OpenAI và fallback Gemini.
+     *
+     * Luồng chọn provider:
+     * - Nếu có `OPENAI_API_KEY`: gọi OpenAI.
+     * - Nếu không có OpenAI key: gọi Gemini (nếu có `GEMINI_API_KEY`).
+     *
+     * API gọi ngoài:
+     * - OpenAI Responses API: `https://api.openai.com/v1/responses`
+     * - Gemini GenerateContent API: `.../models/gemini-2.5-flash:generateContent`
+     *
+     * Output:
+     * - `ResponseType` với `data: ScanResult` nếu parse thành công
+     */
+    if (OPENAI_API_KEY) {
+      return await scanInvoiceWithOpenAI(imageUri);
+    }
+
+    if (!GEMINI_API_KEY) {
+      return {
+        success: false,
+        msg: "Thiếu GEMINI_API_KEY. Vui lòng cấu hình lại.",
+      };
+    }
+
     // Đọc file ảnh và convert sang base64
     const base64Image = await readAsStringAsync(imageUri, {
       encoding: "base64",
@@ -271,43 +491,42 @@ export const scanInvoiceWithAI = async (
         {
           parts: [
             {
+              text: SCAN_PROMPT,
+            },
+            {
               inline_data: {
                 mime_type: mimeType,
                 data: base64Image,
               },
-            },
-            {
-              text: SCAN_PROMPT,
             },
           ],
         },
       ],
       generationConfig: {
         temperature: 0,
-        maxOutputTokens: 256,
-        responseMimeType: "application/json",
+        maxOutputTokens: 1024,
       },
     };
 
     const response = await axios.post(GEMINI_API_URL, requestBody, {
       headers: { "Content-Type": "application/json" },
-      timeout: 30000,
+      timeout: DEFAULT_HTTP_TIMEOUT_MS,
     });
 
-    const text =
-      response.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const text = getGeminiTextFromResponse(response.data);
 
     console.log("Gemini raw response:", text);
 
     if (!text) {
+      console.log("Gemini raw data (no text):", {
+        candidates: response.data?.candidates?.length ?? 0,
+        finishReason: response.data?.candidates?.[0]?.finishReason,
+      });
       return { success: false, msg: "AI không trả về kết quả. Thử lại." };
     }
 
-    let parsed: ScanResult;
-    try {
-      const cleanText = text.replace(/```json|```/g, "").trim();
-      parsed = JSON.parse(cleanText);
-    } catch {
+    const parsed = safeParseJSON(text);
+    if (!parsed || typeof parsed !== "object") {
       console.log("JSON parse failed, raw text:", text);
       return {
         success: false,
@@ -315,13 +534,26 @@ export const scanInvoiceWithAI = async (
       };
     }
 
+    const parsedAny = parsed as any;
+    const hasAnyField = ["totalAmount", "date", "description", "category"].some(
+      (key) => parsedAny?.[key] !== undefined && parsedAny?.[key] !== null,
+    );
+    if (!hasAnyField) {
+      console.log("AI returned empty JSON, raw text:", text);
+      return {
+        success: false,
+        msg: "AI trả về dữ liệu trống. Vui lòng chụp ảnh rõ hơn và thử lại.",
+      };
+    }
+
     // Validate dữ liệu trả về
     const result: ScanResult = {
       totalAmount:
-        Number(String(parsed.totalAmount).replace(/[^0-9.]/g, "")) || 0,
-      date: parsed.date || new Date().toLocaleDateString("vi-VN"),
-      description: parsed.description || "",
-      category: parsed.category || "Khác",
+        Number(String(parsedAny.totalAmount).replace(/[^0-9.]/g, "")) ||
+        0,
+      date: parsedAny.date || new Date().toLocaleDateString("vi-VN"),
+      description: parsedAny.description || "",
+      category: parsedAny.category || "Khác",
     };
 
     return { success: true, data: result };
