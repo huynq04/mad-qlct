@@ -42,7 +42,7 @@ export const createOrUpdateWallet = async (
     const walletRef = walletData?.id
       ? doc(firestore, "wallets", walletData?.id)
       : doc(collection(firestore, "wallets"));
-    await setDoc(walletRef, walletToSave, { merge: true }); // updates only the data provided
+    await setDoc(walletRef, walletToSave, { merge: true }); 
     return { success: true, data: { ...walletToSave, id: walletRef.id } };
   } catch (error: any) {
     console.log("error creating or updating wallet: ", error);
@@ -55,7 +55,7 @@ export const deleteWallet = async (walletId: string): Promise<ResponseType> => {
     const walletRef = doc(firestore, "wallets", walletId);
     await deleteDoc(walletRef);
 
-    deleteTransactionsByWalletId(walletId); // delete all transactions related to this wallet
+    deleteTransactionsByWalletId(walletId); 
 
     return { success: true, msg: "Ví đã được xóa thành công" };
   } catch (err: any) {

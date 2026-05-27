@@ -1,8 +1,9 @@
-// Import the functions you need from the SDKs you need
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { initializeApp } from "firebase/app";
+// @ts-ignore Firebase Auth RN persistence helper is available at runtime.
 import { getReactNativePersistence, initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+
 const firebaseConfig = {
   apiKey: "AIzaSyA7rDaDwQQaIby7LSSqYVcGYM1BwAx-TJo",
   authDomain: "expense-tracker-c13f0.firebaseapp.com",
@@ -12,13 +13,13 @@ const firebaseConfig = {
   appId: "1:478282792207:web:0f0dc3be7ac7da2402927a",
 };
 
-// Initialize Firebase
+// Khởi tạo Firebase App một lần để các service dùng chung cùng project.
 const app = initializeApp(firebaseConfig);
 
-// auth
+// Firebase Auth dùng AsyncStorage để giữ phiên đăng nhập sau khi đóng app.
 export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(AsyncStorage),
 });
 
-// db
+// Cloud Firestore lưu hồ sơ người dùng và dữ liệu nghiệp vụ của ứng dụng.
 export const firestore = getFirestore(app);

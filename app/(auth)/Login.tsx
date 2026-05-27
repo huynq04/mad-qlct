@@ -101,7 +101,7 @@ const Login = () => {
                     </Button>
                 </View>
 
-                {/* Divider Line - Dùng colors.border cho đồng bộ */}
+
                 <View style={styles.dividerContainer}>
                     <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
                     <Typo size={14} color={colors.textLight} style={{ paddingHorizontal: 10 }}>
@@ -110,7 +110,7 @@ const Login = () => {
                     <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
                 </View>
 
-                {/* Social Buttons - Fix viền nút */}
+
                 <View style={styles.socialContainer}>
                     <TouchableOpacity
                         style={[styles.socialButton, { borderColor: colors.border }]}

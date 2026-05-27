@@ -1,5 +1,7 @@
 import { AuthProvider } from "@/contexts/authContext";
 import { ThemeProvider } from "@/contexts/themeContext";
+// Import side effect để i18n sẵn sàng trước khi các màn hình được render.
+import "@/config/i18n";
 import { Stack } from "expo-router";
 import React from "react";
 

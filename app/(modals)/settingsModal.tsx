@@ -58,7 +58,7 @@ const SettingsModal = () => {
                         />
                     </View>
 
-                    {/* 3. Cảnh báo giới hạn chi tiêu (Khôi phục lại cho bro) */}
+                    {/* 3. Cảnh báo giới hạn chi tiêu  */}
                     <TouchableOpacity
                         style={[styles.row, { borderBottomColor: colors.border }]}
                         onPress={() => router.push("/(modals)/expenseLimitWarningModal")}
