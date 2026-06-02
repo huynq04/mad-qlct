@@ -128,6 +128,33 @@ export type ExpenseBudgetStatus = {
   nearLimitItems: ExpenseLimitExceededItem[];
 };
 
+/**
+ * (HIỆN CẢNH BÁO VÍ) Kiểm tra “sắp vượt” hoặc “đã vượt” giới hạn chi tiêu của một ví
+ * (tương ứng `getExceedExpenseLimit` trong mô tả báo cáo; trong code hiện dùng tên `getExceededExpenseLimits`).
+ *
+ * Tư duy nghiệp vụ:
+ * - Khi người dùng chuẩn bị lưu một giao dịch chi (expense), ta dự đoán tổng chi sau khi cộng thêm
+ *   `expenseAmount` sẽ là bao nhiêu trong chu kỳ ngày/tuần/tháng.
+ * - Nếu vượt giới hạn: đưa vào `exceededItems`.
+ * - Nếu gần chạm giới hạn (>= 90%): đưa vào `nearLimitItems`.
+ *
+ * Đầu vào:
+ * - `walletId`: ví đang chi tiêu.
+ * - `expenseAmount`: số tiền chuẩn bị chi (giao dịch mới hoặc số tiền mới khi sửa).
+ * - `date`: ngày của giao dịch (quy định chu kỳ ngày/tuần/tháng cần tính).
+ * - `transactionIdToIgnore`: dùng khi sửa giao dịch để “bỏ qua” giao dịch cũ (tránh cộng 2 lần).
+ *
+ * Các bước chính:
+ * 1) Lấy các budget của ví theo `walletId` và gom theo `type` (day/week/month).
+ * 2) Lấy tất cả giao dịch expense của ví.
+ * 3) Với mỗi `type`:
+ *    - Tính khoảng thời gian start/end tương ứng với `date` (hàm `getPeriodRange`).
+ *    - Cộng dồn `currentSpent` (tổng chi trong khoảng) và tính `nextSpent = currentSpent + expenseAmount`.
+ *    - So sánh `nextSpent` với `limitAmount` để phân loại cảnh báo.
+ *
+ * Đầu ra:
+ * - `ExpenseBudgetStatus` gồm 2 mảng để UI quyết định hiện modal/notification.
+ */
 export const getExceededExpenseLimits = async (
   walletId: string,
   expenseAmount: number,
@@ -504,6 +531,19 @@ export const deleteTransaction = async (
   }
 };
 
+/**
+ * (THỐNG KÊ) Lấy thống kê theo tuần (7 ngày gần nhất)
+ * (tương ứng `fetchWeeklyStat` trong mô tả báo cáo; trong code hiện là `fetchWeeklyStats`).
+ *
+ * Mục đích:
+ * - Query giao dịch của user trong 7 ngày gần nhất.
+ * - Gom tổng `income/expense` theo từng ngày và chuyển sang format phù hợp `BarChart`.
+ *
+ * Output:
+ * - `stats`: mảng dùng cho `react-native-gifted-charts`.
+ *   Mỗi ngày tạo 2 cột: 1 cột thu (income) + 1 cột chi (expense).
+ * - `transactions`: danh sách giao dịch thô để UI có thể liệt kê bên dưới biểu đồ.
+ */
 export const fetchWeeklyStats = async (uid: string): Promise<ResponseType> => {
   try {
     const db = firestore;
@@ -565,6 +605,19 @@ export const fetchWeeklyStats = async (uid: string): Promise<ResponseType> => {
   }
 };
 
+/**
+ * (THỐNG KÊ) Lấy thống kê theo tháng (12 tháng gần nhất)
+ * (tương ứng `fetchMonthlyStat` trong mô tả báo cáo; trong code hiện là `fetchMonthlyStats`).
+ *
+ * Mục đích:
+ * - Query giao dịch của user trong khoảng 12 tháng gần nhất.
+ * - Gom tổng thu/chi theo từng tháng, sau đó “đổ” ra dữ liệu biểu đồ cột.
+ *
+ * Điểm đáng chú ý:
+ * - `monthlyData` được tạo sẵn 12 phần tử (mỗi tháng income/expense = 0).
+ *   Nhờ vậy tháng không có giao dịch vẫn hiển thị cột 0.
+ * - Dùng `matchKey = 'YYYY-M'` để map giao dịch vào đúng tháng.
+ */
 export const fetchMonthlyStats = async (uid: string): Promise<ResponseType> => {
   try {
     const db = firestore;
@@ -645,6 +698,15 @@ export const fetchMonthlyStats = async (uid: string): Promise<ResponseType> => {
   }
 };
 
+/**
+ * (THỐNG KÊ) Lấy thống kê theo năm (từ năm có giao dịch đầu tiên đến năm hiện tại)
+ * (tương ứng `fetchYearlyStat` trong mô tả báo cáo; trong code hiện là `fetchYearlyStats`).
+ *
+ * Ý tưởng:
+ * - Lấy toàn bộ giao dịch của user.
+ * - Tìm năm của giao dịch sớm nhất (earliest) để biết cần thống kê từ năm nào.
+ * - Tạo “khung năm” bằng `getYearsRange(firstYear, currentYear)` rồi cộng dồn income/expense theo năm.
+ */
 export const fetchYearlyStats = async (uid: string): Promise<ResponseType> => {
   try {
     const db = firestore;

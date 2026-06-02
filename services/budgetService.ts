@@ -12,6 +12,23 @@ import {
 
 const validTypes: ExpenseLimitPeriod[] = ["day", "week", "month"];
 
+/**
+ * (ĐẶT GIỚI HẠN VÍ) Lấy danh sách ngân sách/giới hạn chi tiêu theo `walletId`.
+ *
+ * Bối cảnh tính năng:
+ * - Mỗi ví có thể đặt giới hạn chi tiêu theo 3 chu kỳ: ngày/tuần/tháng.
+ * - Dữ liệu lưu ở collection `budget`, mỗi document thường tương ứng 1 (walletId + type).
+ *
+ * Cách hàm hoạt động:
+ * 1) Query Firestore: lấy toàn bộ document trong `budget` có `walletId` đúng với ví đang chọn.
+ * 2) Chuẩn hóa & lọc dữ liệu:
+ *    - Chỉ nhận `type` hợp lệ (day/week/month).
+ *    - Chỉ nhận `amount` là số dương.
+ * 3) Gom theo `type` (dùng object `byType`) để tránh trùng và để UI hiển thị gọn.
+ *
+ * Output:
+ * - `ResponseType` với `data` là mảng `BudgetType[]` (mỗi phần tử có id, walletId, type, amount).
+ */
 export const getBudgetByWalletId = async (
   walletId: string,
 ): Promise<ResponseType> => {
@@ -52,6 +69,23 @@ export const getBudgetByWalletId = async (
   }
 };
 
+/**
+ * (ĐẶT GIỚI HẠN VÍ) Tạo mới hoặc cập nhật giới hạn chi tiêu cho 1 ví theo chu kỳ.
+ *
+ * Ý nghĩa:
+ * - Người dùng có thể đặt giới hạn theo ngày/tuần/tháng.
+ * - Với mỗi (walletId + type) chỉ nên có 1 document. Vì vậy hàm sẽ:
+ *   - Nếu đã tồn tại: cập nhật document đó.
+ *   - Nếu chưa có: tạo document mới.
+ *
+ * Các bước xử lý:
+ * 1) Validate input (walletId, type thuộc validTypes, amount > 0).
+ * 2) Query xem đã có budget cho (walletId + type) chưa.
+ * 3) Xác định `budgetRef`:
+ *    - Có rồi: trỏ vào doc cũ.
+ *    - Chưa có: tạo doc mới (auto id).
+ * 4) Ghi dữ liệu bằng `setDoc(..., { merge: true })` để an toàn khi update.
+ */
 export const createOrUpdateBudget = async (
   payload: Pick<BudgetType, "walletId" | "type" | "amount">,
 ): Promise<ResponseType> => {
